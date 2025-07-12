@@ -1,76 +1,191 @@
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-
-    --radius: 0.5rem;
+    font-family: Lato, "Noto Sans", sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: light;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+  body {
+    margin: 0;
+    font-family: Lato, "Noto Sans", sans-serif;
+    background-color: #f7f8fa;
+    color: #21242c;
+  }
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+  /* Custom scrollbar styling for console feel */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+  ::-webkit-scrollbar-track {
+    background: #f1f3f4;
+    border-radius: 4px;
+  }
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+  ::-webkit-scrollbar-thumb {
+    background: #c1c7d0;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+  ::-webkit-scrollbar-thumb:hover {
+    background: #1865f2;
+  }
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+  /* Console-like animations */
+  @keyframes pulse-glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+  @keyframes slide-in {
+    from {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+  /* Enhanced card styling */
+  .console-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+    border: 2px solid rgba(33, 36, 44, 0.16);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+  }
+
+  .console-card:hover {
+    border-color: #1865f2;
+    box-shadow: 0 8px 24px rgba(24, 101, 242, 0.15);
+    transform: translateY(-2px);
+  }
+
+  /* Status indicators */
+  .status-indicator {
+    position: relative;
+    display: inline-block;
+  }
+
+  .status-indicator::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    animation: pulse-glow 2s infinite;
+  }
+
+  .status-connected::after {
+    background: radial-gradient(circle, rgba(0, 166, 14, 0.3) 0%, transparent 70%);
+  }
+
+  .status-disconnected::after {
+    background: radial-gradient(circle, rgba(217, 41, 22, 0.3) 0%, transparent 70%);
+  }
+
+  .status-connecting::after {
+    background: radial-gradient(circle, rgba(255, 177, 0, 0.3) 0%, transparent 70%);
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+@layer utilities {
+  .bg-offWhite { background-color: #f7f8fa; }
+  .bg-offBlack { background-color: #21242c; }
+  .text-offBlack { color: #21242c; }
+  .text-offWhite { color: #f7f8fa; }
+  .text-blue { color: #1865f2; }
+  .text-green { color: #00a60e; }
+  .text-gold { color: #ffb100; }
+  .text-red { color: #d92916; }
+  .text-purple { color: #9059ff; }
+  .bg-blue { background-color: #1865f2; }
+  .bg-green { background-color: #00a60e; }
+  .bg-gold { background-color: #ffb100; }
+  .bg-red { background-color: #d92916; }
+  .bg-purple { background-color: #9059ff; }
+  .bg-fadedBlue8 { background-color: #f4f7fe; }
+  .bg-fadedBlue16 { background-color: #e8f1fe; }
+  .bg-fadedGreen8 { background-color: #f2fef3; }
+  .bg-fadedGold8 { background-color: #fefcf2; }
+  .bg-fadedPurple8 { background-color: #f7f4ff; }
+  .border-offBlack16 { border-color: rgba(33, 36, 44, 0.16); }
+  .border-blue { border-color: #1865f2; }
+  .hover\:bg-fadedBlue16:hover { background-color: #e8f1fe; }
+  .hover\:bg-fadedGreen16:hover { background-color: #e6fde8; }
+  .hover\:bg-fadedBlue8:hover { background-color: #f4f7fe; }
+  
+  /* Console-specific utilities */
+  .console-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: repeat(6, 1fr);
+    gap: 0.75rem;
+    height: 100%;
   }
-  body {
-    @apply bg-background text-foreground;
+  
+  .console-panel {
+    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+    border: 2px solid rgba(33, 36, 44, 0.16);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    transition: all 0.3s ease;
+  }
+  
+  .console-panel:hover {
+    border-color: rgba(24, 101, 242, 0.3);
+    box-shadow: 0 8px 24px rgba(24, 101, 242, 0.1);
+  }
+  
+  .console-header {
+    background: linear-gradient(90deg, #ffffff 0%, #f4f7fe 100%);
+    border-bottom: 2px solid rgba(33, 36, 44, 0.16);
+    padding: 1rem 1.5rem;
+  }
+  
+  .console-content {
+    padding: 1rem;
+    height: calc(100% - 4rem);
+    overflow: auto;
+  }
+  
+  .animate-slide-in {
+    animation: slide-in 0.3s ease-out;
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+  
+  .console-shadow {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  }
+  
+  .console-shadow-lg {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   }
 }

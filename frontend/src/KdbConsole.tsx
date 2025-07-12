@@ -6,6 +6,12 @@ import { GetKdbPort } from '../wailsjs/go/main/App';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { StatusBar } from '@/components/StatusBar';
 
 interface Result {
@@ -16,9 +22,11 @@ interface Result {
 
 interface KdbConsoleProps {
   onVisualData?: (data: any) => void;
+  onQuerySet?: (setQueryFn: (query: string) => void) => void;
+  onConnectionChange?: (status: 'connected' | 'disconnected' | 'connecting') => void;
 }
 
-export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData }) => {
+export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet, onConnectionChange }) => {
   const kdbClientRef = useRef<KdbWebSocketClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [query, setQuery] = useState('');
@@ -28,6 +36,14 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData }) => {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [tempQuery, setTempQuery] = useState('');
   const resultsRef = useRef<HTMLDivElement | null>(null);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+
+  // Expose setQuery function to parent component
+  useEffect(() => {
+    if (onQuerySet) {
+      onQuerySet(setQuery);
+    }
+  }, [onQuerySet]);
 
   useEffect(() => {
     if (resultsRef.current) {
@@ -48,43 +64,68 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData }) => {
           const client = new KdbWebSocketClient(`ws://localhost:${port}`);
           client.setOnConnect(() => {
             setIsConnected(true);
-            toast.success('WebSocket connected!');
+            setConnectionAttempts(0);
+            onConnectionChange?.('connected');
+            // Only show success toast on manual connection attempts
+            if (connectionAttempts > 0) {
+              toast.success('Connected successfully!', {
+                duration: 2000,
+              });
+            }
           });
           client.setOnClose(() => {
             setIsConnected(false);
-            toast.info('WebSocket disconnected.');
+            onConnectionChange?.('disconnected');
+            // Only show disconnect toast if it was unexpected (not manual disconnect)
+            if (connectionAttempts === 0) {
+              toast.info('Connection lost. Click Connect to reconnect.', {
+                duration: 3000,
+              });
+            }
           });
           client.setOnError((error: Error) => {
-            toast.error(`WebSocket error: ${error.message}`);
+            toast.error(`Connection error: ${error.message}`, {
+              duration: 4000,
+            });
           });
           kdbClientRef.current = client;
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        toast.error(`Initialization failed: ${errorMessage}`);
+        toast.error(`Initialization failed: ${errorMessage}`, {
+          duration: 4000,
+        });
       }
     };
     init();
-  }, []);
+  }, [connectionAttempts]);
 
   const handleConnect = useCallback(async () => {
     if (!kdbClientRef.current) {
-      toast.error('Client not initialized.');
+      toast.error('Client not initialized.', {
+        duration: 3000,
+      });
       return;
     }
     setIsLoading(true);
-    toast.info('Connecting to WebSocket...');
+    setConnectionAttempts(prev => prev + 1);
+    onConnectionChange?.('connecting');
     try {
       await kdbClientRef.current.connect();
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
-        toast.error(`Connection failed: ${errorMessage}`);
+        onConnectionChange?.('disconnected');
+        toast.error(`Connection failed: ${errorMessage}`, {
+          duration: 4000,
+          position: 'top-center',
+        });
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const handleDisconnect = useCallback(() => {
+    setConnectionAttempts(0); // Reset so we don't show disconnect toast
     kdbClientRef.current?.disconnect();
   }, []);
 
@@ -194,31 +235,139 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData }) => {
       return out;
     };
 
+    // Generate comprehensive table summary for array of objects
+    const generateTableSummary = (table: any[]): string => {
+      if (table.length === 0) return 'Empty table';
+      
+      const columns = Object.keys(table[0]);
+      const summary = [`Table Summary (${table.length} rows, ${columns.length} columns)`];
+      
+      // Column analysis
+      summary.push(`Columns: ${columns.join(', ')}`);
+      
+      // Analyze each column
+      columns.forEach(col => {
+        const values = table.map(row => row[col]).filter(v => v !== null && v !== undefined);
+        const nonNullCount = values.length;
+        const nullCount = table.length - nonNullCount;
+        
+        if (nonNullCount === 0) {
+          summary.push(`  ${col}: all null/undefined`);
+          return;
+        }
+        
+        const sampleValues = values.slice(0, 3);
+        const uniqueCount = new Set(values).size;
+        
+        // Type detection
+        const types = new Set(values.map(v => typeof v));
+        const typeStr = Array.from(types).join('|');
+        
+        // Numeric analysis
+        const numericValues = values.filter(v => typeof v === 'number' && Number.isFinite(v));
+        if (numericValues.length > 0) {
+          const min = Math.min(...numericValues);
+          const max = Math.max(...numericValues);
+          const sum = numericValues.reduce((a, b) => a + b, 0);
+          const mean = sum / numericValues.length;
+          const variance = numericValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / numericValues.length;
+          const std = Math.sqrt(variance);
+          
+          summary.push(`  ${col} (${typeStr}): min=${min.toFixed(2)}, max=${max.toFixed(2)}, mean=${mean.toFixed(2)}, std=${std.toFixed(2)}`);
+        } else {
+          // Non-numeric analysis
+          const sampleStr = sampleValues.map(v => String(v).substring(0, 20)).join(', ');
+          summary.push(`  ${col} (${typeStr}): ${uniqueCount} unique values, sample: ${sampleStr}${sampleValues.length < values.length ? '...' : ''}`);
+        }
+        
+        if (nullCount > 0) {
+          summary.push(`    nulls: ${nullCount}/${table.length} (${(nullCount/table.length*100).toFixed(1)}%)`);
+        }
+      });
+      
+      return summary.join('\n');
+    };
+
+    // Generate matrix summary for 2D arrays
+    const generateMatrixSummary = (matrix: any[][]): string => {
+      if (matrix.length === 0) return 'Empty matrix';
+      
+      const rows = matrix.length;
+      const cols = matrix[0]?.length || 0;
+      const summary = [`Matrix Summary (${rows} rows × ${cols} columns)`];
+      
+      // Flatten all numeric values
+      const allNums = matrix.flat().filter(v => typeof v === 'number' && Number.isFinite(v));
+      
+      if (allNums.length > 0) {
+        const min = Math.min(...allNums);
+        const max = Math.max(...allNums);
+        const sum = allNums.reduce((a, b) => a + b, 0);
+        const mean = sum / allNums.length;
+        const variance = allNums.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / allNums.length;
+        const std = Math.sqrt(variance);
+        
+        summary.push(`  Numeric stats: min=${min.toFixed(4)}, max=${max.toFixed(4)}, mean=${mean.toFixed(4)}, std=${std.toFixed(4)}`);
+      }
+      
+      // Check for nulls/undefined
+      const nullCount = matrix.flat().filter(v => v === null || v === undefined).length;
+      const totalElements = rows * cols;
+      if (nullCount > 0) {
+        summary.push(`  Nulls: ${nullCount}/${totalElements} (${(nullCount/totalElements*100).toFixed(1)}%)`);
+      }
+      
+      // Show sample of first few rows/cols
+      const sampleRows = Math.min(3, rows);
+      const sampleCols = Math.min(5, cols);
+      if (sampleRows < rows || sampleCols < cols) {
+        summary.push(`  Sample (${sampleRows}×${sampleCols}):`);
+        for (let i = 0; i < sampleRows; i++) {
+          const row = matrix[i].slice(0, sampleCols).map(v => String(v).substring(0, 8));
+          summary.push(`    [${row.join(', ')}${sampleCols < cols ? '...' : ''}]`);
+        }
+        if (sampleRows < rows) {
+          summary.push(`    ...`);
+        }
+      }
+      
+      return summary.join('\n');
+    };
+
     // Helper to format n-dimensional arrays using `text-table` for 2-D slices or summary for big arrays
     const formatArray = (arr: any, depth = 0): string => {
       const indent = '  '.repeat(depth);
 
-      // Show summary for large arrays (more than 1000 elements)
+      // Show summary for large arrays (more than 30 elements)
       const totalElements = countElements(arr);
-      if (depth === 0 && totalElements > 1000) {
+      if (depth === 0 && totalElements > 30) {
         const shape = getShape(arr);
+        
+        // Check if this is a table (array of objects)
+        if (arr.length > 0 && arr.every((el: any) => typeof el === 'object' && el !== null && !Array.isArray(el))) {
+          return generateTableSummary(arr);
+        }
+        
+        // Check if this is a 2D array (matrix)
+        if (shape.length === 2 && arr.every((el: any) => Array.isArray(el))) {
+          return generateMatrixSummary(arr);
+        }
+        
+        // Default array summary
         const nums = flattenNumbers(arr);
         let mean = 'n/a';
-        let varianceStr = 'n/a';
         let std = 'n/a';
         if (nums.length > 0) {
           const m = nums.reduce((a: number, b: number) => a + b, 0) / nums.length;
           const varVal = nums.reduce((a: number, b: number) => a + (b - m) ** 2, 0) / nums.length;
           mean = m.toFixed(4);
           std = Math.sqrt(varVal).toFixed(4);
-          varianceStr = varVal.toFixed(4);
         }
         return [
           `${shape.length}D array summary`,
           `shape : ${shape.join(' x ')}`,
           `size  : ${totalElements}`,
           `mean  : ${mean}`,
-          `var   : ${varianceStr}`,
           `std   : ${std}`,
         ].join('\n');
       }
@@ -324,68 +473,53 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData }) => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-black text-green-300 border-4 border-green-500 shadow-inner">
-      <div className="p-4 border-b border-green-700/50">
-        <h2 className="text-xl font-bold">Console</h2>
-        <p className="text-muted-foreground text-sm mt-1">Execute kdb+ commands</p>
-      </div>
-
-      <div className="flex-1 overflow-hidden min-h-0">
-        <div ref={resultsRef} className="h-full overflow-y-auto p-4 space-y-2">
-          {results.length === 0 ? (
-            <div className="text-muted-foreground text-center py-8">
-              <p>No results yet.</p>
-              <p className="text-sm mt-2">Connect to the kdb+ WebSocket to get started.</p>
-            </div>
-          ) : (
-            results.map((result, index) => (
-              <div key={index} className="border-l-2 pl-4" style={{ borderColor: result.type === 'query' ? '#60A5FA' : result.type === 'response' ? '#4ADE80' : result.type === 'error' ? '#F87171' : '#9CA3AF' }}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className={`text-xs font-medium ${
-                      result.type === 'query' ? 'text-blue-400' :
-                      result.type === 'response' ? 'text-green-400' :
-                      result.type === 'error' ? 'text-red-400' :
-                      'text-gray-400'
-                  }`}>
-                    {result.type.toUpperCase()}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {result.timestamp}
-                  </span>
-                </div>
-                <pre className="text-sm whitespace-pre-wrap break-all">{formatResult(result.content)}</pre>
+    <Card className="h-full w-full flex flex-col overflow-hidden">
+        <CardHeader className="flex-shrink-0">
+            <CardTitle className="text-lg">Console</CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 p-0 flex flex-col min-h-0">
+            <div className="h-full w-full flex flex-col bg-offBlack text-white rounded-lg shadow-inner overflow-hidden">
+              <div ref={resultsRef} className="flex-1 p-4 overflow-y-auto font-mono text-sm space-y-4">
+                  {results.map((result, index) => (
+                      <div key={index} className="flex items-start">
+                          <span className="text-offBlack/50 mr-2 select-none">{result.timestamp}</span>
+                          <span className={`mr-2 font-bold ${
+                              result.type === 'query' ? 'text-blue' :
+                              result.type === 'error' ? 'text-red' :
+                              result.type === 'system' ? 'text-gold' :
+                              'text-green'
+                          }`}>
+                              {result.type === 'query' ? '>' : result.type === 'error' ? '!' : result.type === 'system' ? '#' : '<'}
+                          </span>
+                          <pre className="flex-1 whitespace-pre-wrap break-words">{formatResult(result.content)}</pre>
+                      </div>
+                  ))}
               </div>
-            ))
-          )}
-        </div>
-      </div>
 
-      <div className="bg-muted/50 p-4 border-t border-green-700/50">
-        <div className="relative">
-          <Textarea
-            value={query}
-            onChange={handleQueryChange}
-            onKeyPress={handleKeyPress}
-            placeholder={isConnected ? "Enter kdb+ query (e.g., til 10)" : "Connect to kdb+ to run queries"}
-            disabled={!isConnected || isLoading}
-            rows={3}
-            className="w-full bg-background border rounded p-2 pr-24 resize-none focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-muted"
-          />
-          <Button
-            onClick={executeQuery}
-            disabled={!isConnected || isLoading || !query.trim()}
-            className="absolute right-2 top-1/2 -translate-y-1/2"
-          >
-            Execute
-          </Button>
-        </div>
-        <StatusBar
-          isConnected={isConnected}
-          onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
-          onClear={clearResults}
-        />
-      </div>
-    </div>
+              <div className="p-2 border-t border-offBlack16 flex-shrink-0">
+                  <Textarea
+                      value={query}
+                      onChange={handleQueryChange}
+                      onKeyDown={handleKeyPress}
+                      placeholder={isConnected ? "Enter kdb+ query..." : "Not connected. Click Connect."}
+                      className="w-full bg-offBlack border-offBlack16 focus:ring-blue resize-none"
+                      disabled={!isConnected || isLoading}
+                  />
+              </div>
+
+              <div className="px-4 py-2 border-t border-offBlack16 flex items-center justify-between flex-shrink-0">
+                  <StatusBar isConnected={isConnected} isLoading={isLoading} />
+                  <div className="flex items-center space-x-2">
+                      <Button onClick={clearResults} variant="destructive" size="sm" disabled={results.length === 0}>Clear</Button>
+                      {isConnected ? (
+                          <Button onClick={handleDisconnect} variant="secondary" size="sm">Disconnect</Button>
+                      ) : (
+                          <Button onClick={handleConnect} variant="secondary" size="sm" disabled={isLoading}>{isLoading ? "Connecting..." : "Connect"}</Button>
+                      )}
+                  </div>
+              </div>
+            </div>
+        </CardContent>
+    </Card>
   );
 }; 

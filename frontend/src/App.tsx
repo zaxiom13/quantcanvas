@@ -1,43 +1,113 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { KdbConsole } from '@/KdbConsole';
-import { SettingsDialog } from '@/components/SettingsDialog';
 import { Toaster } from '@/components/ui/sonner';
 import { VisualOutput } from '@/components/VisualOutput';
-import { LearningGuide } from '@/components/LearningGuide';
+import { Header } from '@/components/Header';
+import { NavigationSidebar } from '@/components/NavigationSidebar';
+import { LearningGuideModal } from '@/components/LearningGuideModal';
+import AwningDemo from '@/components/AwningDemo';
 
 function App() {
   const [isDevMode, setIsDevMode] = useState(false);
   const [visualData, setVisualData] = useState<any>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isVisualOutputCollapsed, setIsVisualOutputCollapsed] = useState(true);
+  const [activeView, setActiveView] = useState('console');
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
+  const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
+  const setQueryRef = useRef<((query: string) => void) | null>(null);
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
+  };
+
+  const toggleVisualOutput = () => {
+    setIsVisualOutputCollapsed(!isVisualOutputCollapsed);
+  };
+
+  const handleQuerySet = (setQueryFn: (query: string) => void) => {
+    setQueryRef.current = setQueryFn;
+  };
+
+  const handleApplyQuery = (query: string) => {
+    if (setQueryRef.current) {
+      setQueryRef.current(query);
+    }
+  };
+
+  const openLearningGuide = () => {
+    setIsLearningGuideOpen(true);
+  };
+
+  const closeLearningGuide = () => {
+    setIsLearningGuideOpen(false);
+  };
 
   return (
-    <div className="dark">
-      <div className="min-h-screen bg-black text-green-300 font-mono">
-        <div className="container mx-auto h-screen overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Settings button */}
-          <div className="absolute top-4 right-4 z-10">
-            <SettingsDialog isDevMode={isDevMode} onDevModeChange={setIsDevMode} />
-          </div>
-
-          {/* Learning Guide */}
-          <div className="col-span-1 h-full min-h-0 overflow-hidden">
-            <LearningGuide />
-          </div>
-
-          {/* Main Content Area */}
-          <div className="col-span-1 lg:col-span-2 h-full flex flex-col gap-4">
-            {/* Visual Output (top half) */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <VisualOutput data={visualData} />
+    <div className="h-screen bg-offWhite text-offBlack flex flex-col overflow-hidden">
+      {/* Enhanced Header */}
+      <Header 
+        isDevMode={isDevMode} 
+        onDevModeChange={setIsDevMode}
+        connectionStatus={connectionStatus}
+        activeView={activeView}
+      />
+      
+      {/* Main Console Layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Navigation Sidebar */}
+        <NavigationSidebar 
+          isCollapsed={isSidebarCollapsed}
+          onToggle={toggleSidebar}
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onLearningGuideOpen={openLearningGuide}
+          isDevMode={isDevMode}
+          onDevModeChange={setIsDevMode}
+        />
+        
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-hidden p-3 bg-gradient-to-br from-offWhite to-fadedBlue8">
+          {activeView === 'awning' ? (
+            <div className="h-full overflow-auto">
+              <AwningDemo />
             </div>
-
-            {/* Console (bottom half) */}
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <KdbConsole onVisualData={setVisualData} />
+          ) : (
+            <div className="h-full flex flex-col gap-3">
+              {/* Visual Output - Top */}
+              <div className={`transition-all duration-300 ${isVisualOutputCollapsed ? 'h-16' : 'h-96'}`}>
+                <VisualOutput 
+                  data={visualData} 
+                  isCollapsed={isVisualOutputCollapsed}
+                  onToggle={toggleVisualOutput}
+                />
+              </div>
+              
+              {/* KDB Console - Bottom */}
+              <div className="flex-1 min-h-0">
+                <div className="h-full bg-white rounded-xl border-2 border-offBlack16 shadow-lg overflow-hidden">
+                  <div className="h-full">
+                    <KdbConsole
+                      onVisualData={setVisualData}
+                      onQuerySet={handleQuerySet}
+                      onConnectionChange={setConnectionStatus}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-        <Toaster />
+          )}
+        </main>
       </div>
+
+      {/* Learning Guide Modal */}
+      <LearningGuideModal
+        isOpen={isLearningGuideOpen}
+        onClose={closeLearningGuide}
+        onApplyQuery={handleApplyQuery}
+      />
+
+      <Toaster />
     </div>
   );
 }

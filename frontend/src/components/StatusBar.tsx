@@ -1,32 +1,18 @@
-import { Button } from './ui/button';
+import React from 'react';
 
 interface StatusBarProps {
   isConnected: boolean;
-  onConnect: () => void;
-  onDisconnect: () => void;
-  onClear: () => void;
+  isLoading: boolean;
 }
 
-export function StatusBar({ isConnected, onConnect, onDisconnect, onClear }: StatusBarProps) {
+export const StatusBar: React.FC<StatusBarProps> = ({ isConnected, isLoading }) => {
+  const statusText = isLoading ? 'Connecting...' : isConnected ? 'Connected' : 'Disconnected';
+  const statusColor = isLoading ? 'bg-gold' : isConnected ? 'bg-green' : 'bg-red';
+
   return (
-    <div className="flex items-center justify-between mt-2">
-      <div className="flex items-center space-x-2">
-        <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-        <span className="text-sm text-muted-foreground">
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </span>
-      </div>
-      <div className="flex items-center space-x-2">
-        <Button onClick={onConnect} disabled={isConnected} variant="outline" size="sm">
-          Connect
-        </Button>
-        <Button onClick={onDisconnect} disabled={!isConnected} variant="outline" size="sm">
-          Disconnect
-        </Button>
-        <Button onClick={onClear} variant="outline" size="sm">
-          Clear
-        </Button>
-      </div>
+    <div className="flex items-center space-x-2">
+      <div className={`w-3 h-3 rounded-full transition-all duration-300 ${statusColor}`} />
+      <span className="text-sm font-medium text-offBlack/80">{statusText}</span>
     </div>
   );
-} 
+}; 

@@ -1,71 +1,128 @@
 import React from 'react';
 import { Button } from './ui/button';
+import { ChevronLeft, ChevronRight, BookOpen, Terminal, Zap } from 'lucide-react';
+import { generateKdbExamples } from '@/lib/example-generator';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 
-const kdbExamples = [
-  {
-    category: 'Basic Queries',
-    items: [
-      { q: 'til 10', doc: 'Generate a list of numbers from 0 to 9.' },
-      { q: '10#`a`b`c', doc: 'Create a list of 10 repeating symbols.' },
-      { q: '`a`b`c!1 2 3', doc: 'Create a dictionary (map).' },
-      { q: 'flip `name`age`city!(`A`B`C;20 25 30;`X`Y`Z)', doc: 'Create a simple table.' },
-    ],
-  },
-  {
-    category: 'Data Types',
-    items: [
-      { q: '`symbol', doc: 'A symbol (interned string).' },
-      { q: '2024.07.27', doc: 'A date type.' },
-      { q: '14:30:00.000', doc: 'A time type.' },
-      { q: '1f', doc: 'A float number (e.g., 1.0).' },
-    ],
-  },
-  {
-    category: 'System Commands',
-    items: [
-      { q: '\\t til 1000', doc: 'Time the execution of an expression.' },
-      { q: '\\ts til 1000', doc: 'Time and show memory usage.' },
-      { q: '\\v', doc: 'List variables in the workspace.' },
-      { q: '\\f', doc: 'List functions in the workspace.' },
-    ],
-  },
-];
+const kdbExamples = generateKdbExamples();
 
-export const LearningGuide: React.FC = () => {
+interface LearningGuideProps {
+  isExpanded: boolean;
+  onToggle: () => void;
+  onApplyQuery?: (query: string) => void;
+}
+
+export const LearningGuide: React.FC<LearningGuideProps> = ({ isExpanded, onToggle, onApplyQuery }) => {
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
+  const handleQueryClick = (query: string) => {
+    if (onApplyQuery) {
+      onApplyQuery(query);
+    } else {
+      // Fallback to copy if no apply function provided
+      copyToClipboard(query);
+    }
+  };
+
+  // Collapsed view - modern minimal design
+  if (!isExpanded) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center p-4">
+        <div className="mb-4 p-3 bg-blue/10 rounded-lg">
+          <BookOpen className="h-8 w-8 text-blue" />
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-blue hover:text-blue hover:bg-fadedBlue8 mb-2"
+          onClick={onToggle}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <span className="text-xs text-offBlack/70 transform -rotate-90 whitespace-nowrap">
+          Learning Guide
+        </span>
+      </div>
+    );
+  }
+
+  // Expanded view - enhanced console design
   return (
-    <div className="h-full flex flex-col bg-black text-green-300 border-4 border-green-500 shadow-inner p-4 font-mono">
-      <h2 className="text-xl font-bold mb-4">Kdb+ Learning Guide</h2>
-      <div className="flex-1 overflow-y-auto pr-2">
-        {kdbExamples.map((section) => (
-          <div key={section.category} className="mb-6">
-            <h3 className="text-lg font-semibold text-green-400 mb-2">{section.category}</h3>
-            <ul className="space-y-3">
-              {section.items.map((item) => (
-                <li key={item.q} className="text-xs border border-green-700/50 p-2 rounded-md bg-green-900/10">
-                  <p className="font-bold text-green-300 mb-1">{item.doc}</p>
-                  <div className="flex items-center justify-between">
-                    <code className="text-green-400 bg-black/50 px-1 rounded">{item.q}</code>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-green-400 hover:text-green-200 hover:bg-green-700/30 h-6 px-2"
-                      onClick={() => copyToClipboard(item.q)}
-                    >
-                      Copy
-                    </Button>
-                  </div>
-                </li>
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-offBlack16 bg-gradient-to-r from-white to-fadedBlue8">
+        <div className="flex items-center space-x-2">
+          <div className="p-2 bg-blue/10 rounded-lg">
+            <BookOpen className="h-4 w-4 text-blue" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-offBlack">Learning Guide</h3>
+            <p className="text-xs text-offBlack/70">KDB+ Reference & Examples</p>
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-blue hover:text-blue hover:bg-fadedBlue8 p-2 h-auto rounded-lg"
+          onClick={onToggle}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {kdbExamples.map((section, sectionIndex) => (
+          <div key={section.category} className="space-y-3">
+            <div className="flex items-center space-x-2 pb-2 border-b border-offBlack16">
+              <Terminal className="h-4 w-4 text-blue" />
+              <h4 className="text-sm font-bold text-blue">{section.category}</h4>
+            </div>
+            
+            <div className="space-y-2">
+              {section.items.map((item, itemIndex) => (
+                <Card key={`${sectionIndex}-${itemIndex}`} className="border border-offBlack16 hover:border-blue/30 transition-colors">
+                  <CardContent className="p-3">
+                    <p className="text-sm text-offBlack mb-2 leading-relaxed">{item.doc}</p>
+                    
+                    <div className="bg-offBlack/5 rounded-lg p-3 mb-3">
+                      <code className="text-xs font-mono text-offBlack whitespace-pre-wrap break-all">
+                        {item.q}
+                      </code>
+                    </div>
+                    
+                    <div className="flex justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-3 text-xs border-blue/30 text-blue hover:bg-blue hover:text-white transition-colors"
+                        onClick={() => handleQueryClick(item.q)}
+                      >
+                        <Zap className="h-3 w-3 mr-1" />
+                        {onApplyQuery ? 'Execute' : 'Copy'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
-            </ul>
+            </div>
           </div>
         ))}
       </div>
-       <div className="text-xs text-center pt-2 border-t border-green-700/50 text-green-600">
-        <p>Execute: <kbd>Enter</kbd> | Newline: <kbd>Shift+Enter</kbd></p>
+      
+      {/* Footer */}
+      <div className="p-3 border-t border-offBlack16 bg-gradient-to-r from-white to-fadedBlue8">
+        <div className="flex items-center justify-center space-x-2">
+          <div className="w-2 h-2 bg-blue rounded-full animate-pulse"></div>
+          <span className="text-xs text-offBlack/70">Interactive Guide Active</span>
+        </div>
       </div>
     </div>
   );

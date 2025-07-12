@@ -30,8 +30,8 @@ export function DevControls() {
   }, []);
 
   return (
-    <div className="space-y-4 rounded-lg border bg-card text-card-foreground shadow-sm p-4">
-        <h3 className="font-semibold">Developer Controls</h3>
+    <div className="space-y-4 rounded-lg border-2 border-offBlack16 bg-offWhite text-offBlack shadow-sm p-4">
+        <h3 className="font-bold text-blue text-lg">Developer Controls</h3>
       <div className="flex flex-wrap gap-2">
         <Button onClick={() => handleBackendAction('start')} disabled={isLoading} variant="secondary">
           Start KDB+
