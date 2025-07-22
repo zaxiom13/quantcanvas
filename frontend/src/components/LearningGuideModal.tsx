@@ -51,7 +51,7 @@ export const LearningGuideModal: React.FC<LearningGuideModalProps> = ({
               <BookOpen className="h-5 w-5 text-blue" />
             </div>
             <div>
-              <DialogTitle className="text-xl font-bold text-offBlack">Learning Guide</DialogTitle>
+              <DialogTitle className="text-xl font-bold text-offBlack">Basics</DialogTitle>
               <p className="text-sm text-offBlack/70">KDB+ Reference & Examples</p>
             </div>
           </div>

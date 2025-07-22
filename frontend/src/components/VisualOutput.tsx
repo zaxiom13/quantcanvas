@@ -295,6 +295,35 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
   const animRef = useRef<number>();
   const frameIdxRef = useRef(0);
 
+  // Debug function to understand data structure
+  const debugDataStructure = (data: any) => {
+    if (!data) return 'null/undefined';
+    if (Array.isArray(data)) {
+      if (data.length === 0) return 'empty array';
+      const firstEl = data[0];
+      if (Array.isArray(firstEl)) {
+        if (firstEl.every(v => typeof v === 'number')) {
+          return `${data.length}x${firstEl.length} numeric matrix`;
+        }
+        return `${data.length}x${firstEl.length} mixed matrix`;
+      }
+      return `array of ${typeof firstEl} (length: ${data.length})`;
+    }
+    return typeof data;
+  };
+
+  // Log data structure when it changes
+  React.useEffect(() => {
+    if (data) {
+      console.log('VisualOutput received data:', {
+        structure: debugDataStructure(data),
+        sample: Array.isArray(data) && data.length > 0 ? data[0] : data,
+        isGrayscaleMatrix: isGrayscaleMatrix(data),
+        isColorMatrix: isColorMatrix(data)
+      });
+    }
+  }, [data]);
+
   const { tableData, columns, columnNames, numericColumns } = useMemo(() => {
     let tableData: any[] = [];
     let columns: any[] = [];
@@ -329,10 +358,16 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
   }, [data]);
 
   // Utility type guards
-  const isGrayscaleMatrix = (arr: any): arr is number[][] => (
-      Array.isArray(arr) && arr.length > 0 &&
-      arr.every(row => Array.isArray(row) && row.every(v => typeof v === 'number'))
-  );
+  const isGrayscaleMatrix = (arr: any): arr is number[][] => {
+    if (!Array.isArray(arr) || arr.length === 0) return false;
+    
+    // Check if it's an array of arrays with all numbers
+    return arr.every(row => 
+      Array.isArray(row) && 
+      row.length > 0 && 
+      row.every(v => typeof v === 'number' && !isNaN(v))
+    );
+  };
 
   const isColorMatrix = (arr: any): arr is number[][][] => (
       Array.isArray(arr) && arr.length > 0 &&
@@ -355,11 +390,42 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
       }
   }
 
+  // Cleanup canvas animation on unmount or data change
+  useEffect(() => {
+    return () => {
+      if (animRef.current) {
+        cancelAnimationFrame(animRef.current);
+        animRef.current = undefined;
+      }
+    };
+  }, [data]);
+
+  // Re-trigger canvas rendering when component becomes visible
+  useEffect(() => {
+    if (!isCollapsed && data && view === 'image') {
+      // Small delay to ensure DOM is ready
+      const timeoutId = setTimeout(() => {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          // Force re-render of canvas content
+          const event = new Event('resize');
+          window.dispatchEvent(event);
+        }
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isCollapsed, data, view]);
+
     useEffect(() => {
         // Reset selections when data changes
         setXAxisKey(null);
         setYAxisKeys([]);
-        if (isTableData(data)) {
+        
+        // Check for image data first
+        if (isGrayscaleMatrix(data) || isColorMatrix(data) || isGrayscaleGif(data) || isColorGif(data)) {
+            setView('image');
+        } else if (isTableData(data)) {
             // If there's exactly one column and it's numeric, default to histogram view
             if (columnNames.length === 1 && numericColumns.length === 1) {
                 setView('chart');
@@ -369,7 +435,7 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
                 setView('table');
             }
         } else {
-            setView('image');
+            setView('table'); // Default fallback
         }
     }, [data, columnNames, numericColumns]);
 
@@ -502,7 +568,7 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
         }
     };
     
-    if ((isColorGif(data) || isGrayscaleGif(data)) && view === 'image') {
+    if ((isColorGif(data) || isGrayscaleGif(data))) {
       const frames = data as any[];
       const render = () => {
         drawFrame(frames[frameIdxRef.current]);
@@ -510,10 +576,10 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
         animRef.current = requestAnimationFrame(render);
       };
       render();
-    } else if ((isColorMatrix(data) || isGrayscaleMatrix(data)) && view === 'image') {
+    } else if ((isColorMatrix(data) || isGrayscaleMatrix(data))) {
       drawFrame(data);
     }
-  }, [data, view]); // Re-run if view changes to render canvas for 'image'
+  }, [data, view, isCollapsed]); // Re-run if view changes or when expanded
 
 
   const handleYAxisToggle = (key: string) => {
@@ -525,7 +591,6 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
   if (!data) {
     return (
       <div className="h-full w-full bg-white rounded-xl border-2 border-offBlack16 shadow-lg overflow-hidden flex flex-col">
-        {/* Clean Awning Header */}
         <div className="flex-shrink-0 bg-offBlack p-3 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <BarChart3 className="h-5 w-5 text-white" />
@@ -552,7 +617,6 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
 
   return (
     <div className="h-full w-full bg-white rounded-xl border-2 border-offBlack16 shadow-lg overflow-hidden flex flex-col">
-      {/* Clean Awning Header */}
       <div className="flex-shrink-0 bg-offBlack p-3 flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <BarChart3 className="h-5 w-5 text-white" />
@@ -584,7 +648,7 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
 
       {/* Content Views - Only show when not collapsed */}
       {!isCollapsed && (
-        <div className="flex-1 min-h-0 overflow-hidden" key={String(data)}>
+        <div className="flex-1 min-h-0 overflow-hidden">
           {view === 'table' && isTableData(data) && (
             <div className="h-full overflow-hidden">
               <TableView data={tableData} columns={columns} />
@@ -595,7 +659,8 @@ export const VisualOutput: React.FC<VisualOutputProps> = ({ data, isCollapsed = 
             <div className="h-full flex justify-center items-center bg-offWhite rounded-lg border-2 border-offBlack16 overflow-hidden">
               <canvas
                 ref={canvasRef}
-                className="max-w-full max-h-full object-contain"
+                className="max-w-full max-h-full object-contain border border-gray-300"
+                style={{ minWidth: '100px', minHeight: '100px' }}
               />
             </div>
           )}

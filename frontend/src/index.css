@@ -51,6 +51,12 @@
     50% { opacity: 0.5; }
   }
 
+  @keyframes focus-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+  }
+
   @keyframes slide-in {
     from {
       transform: translateX(-100%);
@@ -188,4 +194,33 @@
   .console-shadow-lg {
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
   }
+  
+  /* Chapter content styling */
+  .chapter-content pre {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  
+  .chapter-content code {
+    background-color: #f8f9fa;
+    padding: 0.125rem 0.25rem;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+  }
+  
+  .chapter-content pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+  }
+
+
 }

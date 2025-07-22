@@ -6,6 +6,7 @@ import { GetKdbPort } from '../wailsjs/go/main/App';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -24,10 +25,23 @@ interface KdbConsoleProps {
   onVisualData?: (data: any) => void;
   onQuerySet?: (setQueryFn: (query: string) => void) => void;
   onConnectionChange?: (status: 'connected' | 'disconnected' | 'connecting') => void;
+  onResumeReading?: () => void;
+  hasReadingPosition?: boolean;
+  readingChapterTitle?: string;
+  activeView?: string;
 }
 
-export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet, onConnectionChange }) => {
+export const KdbConsole: React.FC<KdbConsoleProps> = ({ 
+  onVisualData, 
+  onQuerySet, 
+  onConnectionChange, 
+  onResumeReading, 
+  hasReadingPosition, 
+  readingChapterTitle,
+  activeView
+}) => {
   const kdbClientRef = useRef<KdbWebSocketClient | null>(null);
+  const queryInputRef = useRef<HTMLTextAreaElement>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Result[]>([]);
@@ -37,19 +51,216 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
   const [tempQuery, setTempQuery] = useState('');
   const resultsRef = useRef<HTMLDivElement | null>(null);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  
+  // Interactive coordinates state
+  const [isMouseMode, setIsMouseMode] = useState(false);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [mouseX, setMouseX] = useState(0);
+  const [mouseY, setMouseY] = useState(0);
+  const [lastQuery, setLastQuery] = useState('');
+  const [liveResults, setLiveResults] = useState<any[]>([]);
+  const [isLiveOutputExpanded, setIsLiveOutputExpanded] = useState(false);
+  const liveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const consoleContainerRef = useRef<HTMLDivElement>(null);
+  const lastMousePosRef = useRef({ x: 0, y: 0 });
+  const lastQueryTimeRef = useRef(0);
 
-  // Expose setQuery function to parent component
+  // Focus the query input
+  const focusQueryInput = useCallback(() => {
+    if (queryInputRef.current && isConnected && !isLoading) {
+      queryInputRef.current.focus();
+    }
+  }, [isConnected, isLoading]);
+
+  // Expose setQuery function to parent component with focus
   useEffect(() => {
     if (onQuerySet) {
-      onQuerySet(setQuery);
+      onQuerySet((query: string) => {
+        setQuery(query);
+        // Focus the input after setting the query
+        setTimeout(() => focusQueryInput(), 100);
+      });
     }
-  }, [onQuerySet]);
+  }, [onQuerySet, focusQueryInput]);
+
+  // Focus input when component mounts and is connected
+  useEffect(() => {
+    if (isConnected && !isLoading) {
+      setTimeout(() => focusQueryInput(), 200);
+    }
+  }, [isConnected, isLoading, focusQueryInput]);
+
+  // Focus input after successful connection
+  useEffect(() => {
+    if (isConnected && connectionAttempts > 0) {
+      setTimeout(() => focusQueryInput(), 300);
+    }
+  }, [isConnected, connectionAttempts, focusQueryInput]);
+
+  // Focus input when clicking on the console area
+  const handleConsoleClick = (e: React.MouseEvent) => {
+    // Only focus if clicking on the console area but not on interactive elements
+    if (e.target === e.currentTarget || (e.target as HTMLElement).closest('.console-results')) {
+      focusQueryInput();
+    }
+  };
+
+  // Focus input when view changes to console
+  useEffect(() => {
+    if (activeView === 'console' && isConnected && !isLoading) {
+      setTimeout(() => focusQueryInput(), 100);
+    }
+  }, [activeView, isConnected, isLoading, focusQueryInput]);
+
+  // Always track mouse coordinates
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      // Normalize based on entire window
+      const normalizedX = e.clientX / window.innerWidth;
+      const normalizedY = e.clientY / window.innerHeight;
+      
+      const newX = Math.max(0, Math.min(1, normalizedX));
+      const newY = Math.max(0, Math.min(1, normalizedY));
+      
+      setMouseX(newX);
+      setMouseY(newY);
+      
+      // Check if mouse has moved significantly (more than 0.01 in either direction)
+      const deltaX = Math.abs(newX - lastMousePosRef.current.x);
+      const deltaY = Math.abs(newY - lastMousePosRef.current.y);
+      const hasMoved = deltaX > 0.01 || deltaY > 0.01;
+      
+      // Update last position
+      lastMousePosRef.current = { x: newX, y: newY };
+      
+             // If in mouse mode and mouse has moved, trigger query
+      if (isMouseMode && hasMoved && lastQuery && isConnected && !isLoading) {
+        const now = Date.now();
+        // Throttle to max 10 queries per second (100ms minimum interval)
+        if (now - lastQueryTimeRef.current > 100) {
+          lastQueryTimeRef.current = now;
+          
+          if (kdbClientRef.current) {
+            const mousePrefix = `mouseX:${newX.toFixed(6)}; mouseY:${newY.toFixed(6)}; `;
+            const fullQuery = mousePrefix + lastQuery;
+            
+            kdbClientRef.current.query(fullQuery).then(result => {
+              // Add to live results
+              setLiveResults(prev => [...prev, { 
+                timestamp: new Date().toLocaleTimeString(),
+                result,
+                coordinates: { x: newX, y: newY }
+              }]);
+              
+              if (onVisualData && Array.isArray(result)) {
+                onVisualData(result);
+              }
+            }).catch(error => {
+              console.error('Live mode query failed:', error);
+              setLiveResults(prev => [...prev, { 
+                timestamp: new Date().toLocaleTimeString(),
+                error: error.message,
+                coordinates: { x: newX, y: newY }
+              }]);
+            });
+          }
+        }
+      }
+    };
+
+    // Add event listener to window for global mouse tracking
+    window.addEventListener('mousemove', handleMouseMove);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+          }, [isMouseMode, lastQuery, isConnected, isLoading, onVisualData]);
+
+  // Live mode execution (interval-based)
+  useEffect(() => {
+    if (isLiveMode && lastQuery && isConnected && !isLoading) {
+      const interval = setInterval(() => {
+        if (kdbClientRef.current && lastQuery) {
+          const mousePrefix = `mouseX:${mouseX.toFixed(6)}; mouseY:${mouseY.toFixed(6)}; `;
+          const fullQuery = mousePrefix + lastQuery;
+          
+          kdbClientRef.current.query(fullQuery).then(result => {
+            // Add to live results
+            setLiveResults(prev => [...prev, { 
+              timestamp: new Date().toLocaleTimeString(),
+              result,
+              coordinates: { x: mouseX, y: mouseY }
+            }]);
+            
+            if (onVisualData && Array.isArray(result)) {
+              onVisualData(result);
+            }
+          }).catch(error => {
+            console.error('Live mode query failed:', error);
+            setLiveResults(prev => [...prev, { 
+              timestamp: new Date().toLocaleTimeString(),
+              error: error.message,
+              coordinates: { x: mouseX, y: mouseY }
+            }]);
+          });
+        }
+      }, 100); // 0.1 seconds
+      
+      liveIntervalRef.current = interval;
+      return () => clearInterval(interval);
+    } else {
+      if (liveIntervalRef.current) {
+        clearInterval(liveIntervalRef.current);
+        liveIntervalRef.current = null;
+      }
+    }
+  }, [isLiveMode, lastQuery, mouseX, mouseY, isConnected, isLoading, onVisualData]);
+
+  // Toggle mouse mode
+  const toggleMouseMode = useCallback(() => {
+    setIsMouseMode(prev => !prev);
+    if (isLiveMode) {
+      setIsLiveMode(false); // Turn off live mode when enabling mouse mode
+    }
+    if (!isMouseMode && query.trim()) {
+      setLastQuery(query.trim());
+      setLiveResults([]); // Clear previous results when starting
+    }
+  }, [isLiveMode, isMouseMode, query]);
+
+  // Toggle live mode
+  const toggleLiveMode = useCallback(() => {
+    setIsLiveMode(prev => !prev);
+    if (isMouseMode) {
+      setIsMouseMode(false); // Turn off mouse mode when enabling live mode
+    }
+    if (!isLiveMode && query.trim()) {
+      setLastQuery(query.trim());
+      setLiveResults([]); // Clear previous results when starting
+    }
+  }, [isLiveMode, isMouseMode, query]);
+
+  // Clear live results
+  const clearLiveResults = useCallback(() => {
+    setLiveResults([]);
+  }, []);
 
   useEffect(() => {
     if (resultsRef.current) {
       resultsRef.current.scrollTop = resultsRef.current.scrollHeight;
     }
   }, [results]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Cleanup any remaining intervals (though we're not using them anymore)
+      if (liveIntervalRef.current) {
+        clearInterval(liveIntervalRef.current);
+      }
+    };
+  }, []);
 
   const addResult = useCallback((type: Result['type'], content: any) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -72,6 +283,8 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
                 duration: 2000,
               });
             }
+            // Focus input after successful connection
+            setTimeout(() => focusQueryInput(), 500);
           });
           client.setOnClose(() => {
             setIsConnected(false);
@@ -127,12 +340,20 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
   const handleDisconnect = useCallback(() => {
     setConnectionAttempts(0); // Reset so we don't show disconnect toast
     kdbClientRef.current?.disconnect();
-  }, []);
+    // Focus input after disconnect (user might want to reconnect)
+    setTimeout(() => focusQueryInput(), 100);
+  }, [focusQueryInput]);
 
   const executeQuery = useCallback(async () => {
     if (!query.trim() || !kdbClientRef.current) return;
 
     setIsLoading(true);
+    
+    // Always prepend mouse coordinates to queries
+    const mousePrefix = `mouseX:${mouseX.toFixed(6)}; mouseY:${mouseY.toFixed(6)}; `;
+    const finalQuery = mousePrefix + query.trim();
+    setLastQuery(query.trim()); // Store the original query for live mode
+    
     addResult('query', query);
 
     // Add to history if it's not already the last item
@@ -144,7 +365,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
     });
 
     try {
-      const result = await kdbClientRef.current.query(query);
+      const result = await kdbClientRef.current.query(finalQuery);
       addResult('response', result);
       // if result looks like tabular data, forward to visual output
       if (onVisualData && Array.isArray(result)) {
@@ -158,14 +379,18 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
       setQuery('');
       setHistoryIndex(-1);
       setTempQuery('');
+      // Focus the input after query execution
+      setTimeout(() => focusQueryInput(), 100);
     }
-  }, [query, addResult, onVisualData]);
+      }, [query, addResult, onVisualData, focusQueryInput, mouseX, mouseY]);
 
   const clearResults = () => {
     setResults([]);
     if (onVisualData) {
       onVisualData(null);
     }
+    // Focus input after clearing results
+    setTimeout(() => focusQueryInput(), 100);
   };
 
   const handleQueryChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -175,6 +400,23 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
       setHistoryIndex(-1);
       setTempQuery('');
     }
+  };
+
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+    // Add a subtle pulse animation
+    if (queryInputRef.current) {
+      queryInputRef.current.style.animation = 'focus-pulse 0.3s ease-in-out';
+      setTimeout(() => {
+        if (queryInputRef.current) {
+          queryInputRef.current.style.animation = '';
+        }
+      }, 300);
+    }
+  };
+
+  const handleInputBlur = () => {
+    setIsInputFocused(false);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -475,11 +717,81 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
   return (
     <Card className="h-full w-full flex flex-col overflow-hidden">
         <CardHeader className="flex-shrink-0">
-            <CardTitle className="text-lg">Console</CardTitle>
+            <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center space-x-2">
+                    Console
+                    {isInputFocused && (
+                        <span className="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full animate-pulse">
+                            Ready
+                        </span>
+                    )}
+                    <span 
+                        className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full cursor-help"
+                        title="These coordinates are available to use in expressions whenever you like"
+                    >
+                        mouseX:{mouseX.toFixed(3)}, mouseY:{mouseY.toFixed(3)}
+                    </span>
+                    {isMouseMode && (
+                        <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                            Mouse
+                        </span>
+                    )}
+                    {isLiveMode && (
+                        <span className="text-xs text-orange-600 bg-orange-100 px-2 py-1 rounded-full animate-pulse">
+                            Live
+                        </span>
+                    )}
+                </CardTitle>
+                <div className="flex items-center space-x-2">
+                    {/* Mouse Mode Control */}
+                    <Button
+                        onClick={toggleMouseMode}
+                        variant={isMouseMode ? "secondary" : "outline"}
+                        size="sm"
+                        className="text-green-600 hover:text-green-600"
+                        title="Toggle mouse mode (execute on mouse movement)"
+                        disabled={!query.trim() && !lastQuery}
+                    >
+                        <Mouse className="h-4 w-4" />
+                    </Button>
+                    
+                    {/* Live Mode Control */}
+                    <Button
+                        onClick={toggleLiveMode}
+                        variant={isLiveMode ? "secondary" : "outline"}
+                        size="sm"
+                        className="text-orange-600 hover:text-orange-600"
+                        title="Toggle live mode (auto re-execute every 0.1s)"
+                        disabled={!query.trim() && !lastQuery}
+                    >
+                        {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </Button>
+                    
+                    {hasReadingPosition && onResumeReading && (
+                        <Button
+                            onClick={() => {
+                                onResumeReading();
+                                // Focus input after resuming reading
+                                setTimeout(() => focusQueryInput(), 100);
+                            }}
+                            variant="secondary"
+                            size="sm"
+                            className="text-blue hover:text-blue hover:bg-fadedBlue16"
+                        >
+                            <BookOpen className="h-4 w-4 mr-2" />
+                            Resume: {readingChapterTitle || 'Reading'}
+                        </Button>
+                    )}
+                </div>
+            </div>
         </CardHeader>
         <CardContent className="flex-1 p-0 flex flex-col min-h-0">
-            <div className="h-full w-full flex flex-col bg-offBlack text-white rounded-lg shadow-inner overflow-hidden">
-              <div ref={resultsRef} className="flex-1 p-4 overflow-y-auto font-mono text-sm space-y-4">
+            <div 
+                ref={consoleContainerRef}
+                className="h-full w-full flex flex-col bg-offBlack text-white rounded-lg shadow-inner overflow-hidden" 
+                onClick={handleConsoleClick}
+            >
+              <div ref={resultsRef} className="flex-1 p-4 overflow-y-auto font-mono text-sm space-y-4 console-results">
                   {results.map((result, index) => (
                       <div key={index} className="flex items-start">
                           <span className="text-offBlack/50 mr-2 select-none">{result.timestamp}</span>
@@ -494,15 +806,101 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
                           <pre className="flex-1 whitespace-pre-wrap break-words">{formatResult(result.content)}</pre>
                       </div>
                   ))}
+                  
+                  {/* Interactive Mode Output */}
+                  {(isLiveMode || isMouseMode) && liveResults.length > 0 && (
+                      <div className="border-t border-offBlack16 pt-4">
+                          <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-2">
+                                  <span className={`font-bold ${isLiveMode ? 'text-orange-600' : 'text-green-600'}`}>
+                                      {isLiveMode ? 'LIVE' : 'MOUSE'}
+                                  </span>
+                                  <span className="text-offBlack/70 text-xs">
+                                      {liveResults.length} results • {liveResults.length > 0 && liveResults[liveResults.length - 1].timestamp}
+                                  </span>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                  <Button
+                                      onClick={clearLiveResults}
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-red-600 hover:text-red-600"
+                                      title="Clear live results"
+                                  >
+                                      <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                      onClick={() => setIsLiveOutputExpanded(!isLiveOutputExpanded)}
+                                      variant="outline"
+                                      size="sm"
+                                      className="text-blue-600 hover:text-blue-600"
+                                      title={isLiveOutputExpanded ? "Collapse results" : "Expand results"}
+                                  >
+                                      {isLiveOutputExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                  </Button>
+                              </div>
+                          </div>
+                          
+                          {isLiveOutputExpanded ? (
+                              // Show all results
+                              <div className="space-y-2 max-h-96 overflow-y-auto">
+                                  {liveResults.map((liveResult, index) => (
+                                      <div key={index} className="flex items-start bg-offBlack/5 p-2 rounded">
+                                          <span className="text-offBlack/50 mr-2 select-none text-xs">{liveResult.timestamp}</span>
+                                          <span className="text-purple-600 mr-2 font-bold text-xs">
+                                              ({liveResult.coordinates.x.toFixed(3)}, {liveResult.coordinates.y.toFixed(3)})
+                                          </span>
+                                          <span className={`mr-2 font-bold text-xs ${
+                                              liveResult.error ? 'text-red' : 'text-green'
+                                          }`}>
+                                              {liveResult.error ? '!' : '<'}
+                                          </span>
+                                          <pre className="flex-1 whitespace-pre-wrap break-words text-xs">
+                                              {liveResult.error ? liveResult.error : formatResult(liveResult.result)}
+                                          </pre>
+                                      </div>
+                                  ))}
+                              </div>
+                          ) : (
+                              // Show summary
+                              <div className="bg-offBlack/5 p-3 rounded">
+                                  <div className="text-sm text-offBlack/70 mb-2">
+                                      <strong>Latest Result:</strong> {liveResults.length > 0 && liveResults[liveResults.length - 1].timestamp}
+                                  </div>
+                                  <div className="text-xs text-offBlack/60">
+                                      <div>Coordinates: ({liveResults.length > 0 && liveResults[liveResults.length - 1].coordinates.x.toFixed(3)}, {liveResults.length > 0 && liveResults[liveResults.length - 1].coordinates.y.toFixed(3)})</div>
+                                      {liveResults.length > 0 && !liveResults[liveResults.length - 1].error && (
+                                          <div className="mt-1">
+                                              <strong>Output:</strong> {typeof liveResults[liveResults.length - 1].result === 'object' ? 
+                                                  (Array.isArray(liveResults[liveResults.length - 1].result) ? 
+                                                      `${liveResults[liveResults.length - 1].result.length} items` : 
+                                                      'Object') : 
+                                                  String(liveResults[liveResults.length - 1].result).substring(0, 100)
+                                              }{String(liveResults[liveResults.length - 1].result).length > 100 ? '...' : ''}
+                                          </div>
+                                      )}
+                                      {liveResults.length > 0 && liveResults[liveResults.length - 1].error && (
+                                          <div className="mt-1 text-red-600">
+                                              <strong>Error:</strong> {liveResults[liveResults.length - 1].error}
+                                          </div>
+                                      )}
+                                  </div>
+                              </div>
+                          )}
+                      </div>
+                  )}
               </div>
 
-              <div className="p-2 border-t border-offBlack16 flex-shrink-0">
+              <div className={`p-2 border-t border-offBlack16 flex-shrink-0 transition-all duration-200 ${isInputFocused ? 'bg-blue/5' : ''}`}>
                   <Textarea
+                      ref={queryInputRef}
                       value={query}
                       onChange={handleQueryChange}
                       onKeyDown={handleKeyPress}
-                      placeholder={isConnected ? "Enter kdb+ query..." : "Not connected. Click Connect."}
-                      className="w-full bg-offBlack border-offBlack16 focus:ring-blue resize-none"
+                      onFocus={handleInputFocus}
+                      onBlur={handleInputBlur}
+                      placeholder={isConnected ? "Enter kdb+ query... (Ctrl+L to focus)" : "Not connected. Click Connect."}
+                      className={`w-full bg-blue/5 border-blue/30 focus:ring-blue focus:border-blue text-offBlack placeholder:text-offBlack/60 resize-none font-mono text-sm transition-all duration-200 ${isInputFocused ? 'shadow-lg shadow-blue/20' : ''}`}
                       disabled={!isConnected || isLoading}
                   />
               </div>
@@ -514,7 +912,18 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({ onVisualData, onQuerySet
                       {isConnected ? (
                           <Button onClick={handleDisconnect} variant="secondary" size="sm">Disconnect</Button>
                       ) : (
-                          <Button onClick={handleConnect} variant="secondary" size="sm" disabled={isLoading}>{isLoading ? "Connecting..." : "Connect"}</Button>
+                          <Button 
+                              onClick={() => {
+                                  handleConnect();
+                                  // Focus input after connection attempt
+                                  setTimeout(() => focusQueryInput(), 100);
+                              }} 
+                              variant="secondary" 
+                              size="sm" 
+                              disabled={isLoading}
+                          >
+                              {isLoading ? "Connecting..." : "Connect"}
+                          </Button>
                       )}
                   </div>
               </div>

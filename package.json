@@ -1,0 +1,15 @@
+{
+  "name": "quantcanvas-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for quantCanvas project",
+  "main": "index.js",
+  "scripts": {
+    "extract-chapters": "node scripts/extract-chapters.js"
+  },
+  "dependencies": {
+    "jsdom": "^24.0.0"
+  },
+  "devDependencies": {},
+  "author": "",
+  "license": "ISC"
+} 

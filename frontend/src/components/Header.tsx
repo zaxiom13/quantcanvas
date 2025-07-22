@@ -62,10 +62,16 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
             </div>
             
-            {/* Right side - Time only */}
-            <div className="flex items-center space-x-2 text-offBlack">
-                <Clock className="h-4 w-4" />
-                <span className="text-sm font-mono">{currentTime}</span>
+            {/* Right side - Time and shortcuts */}
+            <div className="flex items-center space-x-4 text-offBlack">
+                <div className="flex items-center space-x-2 text-offBlack/60">
+                    <span className="text-xs">Ctrl+L</span>
+                    <span className="text-xs">Focus Query</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-sm font-mono">{currentTime}</span>
+                </div>
             </div>
         </header>
     );

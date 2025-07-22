@@ -71,4 +71,8 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Personal save state files
+save-state.json
+*.save-state.json 

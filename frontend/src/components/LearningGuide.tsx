@@ -47,7 +47,7 @@ export const LearningGuide: React.FC<LearningGuideProps> = ({ isExpanded, onTogg
           <ChevronRight className="h-4 w-4" />
         </Button>
         <span className="text-xs text-offBlack/70 transform -rotate-90 whitespace-nowrap">
-          Learning Guide
+          Basics
         </span>
       </div>
     );
@@ -63,7 +63,7 @@ export const LearningGuide: React.FC<LearningGuideProps> = ({ isExpanded, onTogg
             <BookOpen className="h-4 w-4 text-blue" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-offBlack">Learning Guide</h3>
+            <h3 className="text-lg font-bold text-offBlack">Basics</h3>
             <p className="text-xs text-offBlack/70">KDB+ Reference & Examples</p>
           </div>
         </div>
