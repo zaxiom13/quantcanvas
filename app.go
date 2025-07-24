@@ -68,33 +68,16 @@ func (a *App) startKdb() error {
 		return fmt.Errorf("'q' executable not found in PATH. Please install kdb+ and add it to your PATH: %w", err)
 	}
 
-	// Create an enhanced, more robust WebSocket script
-	scriptContent := fmt.Sprintf(`
-/ Enhanced WebSocket handler for QuantCanvas
-.z.wo:{[x] 0N!"[INFO] WebSocket opened: ",string x}
-.z.wc:{[x] 0N!"[INFO] WebSocket closed: ",string x}
-.z.ws:{[x]
-  0N!"[QUERY] Received: ",x;
-  / Evaluate the query safely and return errors as a queryable object
-  result: @[value; x; {[e] 0N!"[ERROR] ",e; (`+"`error;`msg)!(`ExecutionError;e)}];"+`
-  / Send result back to the client as a JSON string
-  neg[.z.w] .j.j result;
- }
-
-/ Set the listening port
-\p %d
-/ Log that the server has started
-0N!"[OK] kdb+ WebSocket server listening on port %d";
-`, a.kdbPort, a.kdbPort)
-
-	// Create temporary script file
-	scriptPath := filepath.Join(os.TempDir(), "kdb_ws_init.q")
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0644); err != nil {
-		return fmt.Errorf("failed to create kdb+ init script: %w", err)
+	// Load the external q script file
+	scriptPath := filepath.Join("scripts", "reset_server.q")
+	
+	// Check if the script file exists
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		return fmt.Errorf("kdb+ script file not found: %s", scriptPath)
 	}
 
-	fmt.Printf("Executing command: q %s\n", scriptPath)
-	a.kdbCmd = exec.Command("q", scriptPath)
+	fmt.Printf("Executing command: q %s -p %d\n", scriptPath, a.kdbPort)
+	a.kdbCmd = exec.Command("q", scriptPath, "-p", fmt.Sprintf("%d", a.kdbPort))
 	a.kdbCmd.Stdout = os.Stdout
 	a.kdbCmd.Stderr = os.Stderr
 
@@ -317,6 +300,17 @@ func (a *App) CheckKdbInstallation() string {
 	}
 
 	return fmt.Sprintf("OK: kdb+ is properly installed at %s\nTest output: %s", qPath, string(output))
+}
+
+// ResetKdbServer resets the KDB+ server by calling the resetServer function
+func (a *App) ResetKdbServer() string {
+	fmt.Println("Resetting KDB+ server from backend...")
+	
+	// Check if KDB+ is running
+	
+	// Return the query that should be executed to reset the server
+	// This maintains separation of concerns while working with the WebSocket architecture
+	return "resetServer[]"
 }
 
 // domReady is called after front-end resources have been loaded

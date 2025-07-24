@@ -1,18 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Clock } from 'lucide-react';
+import { ChevronRight, Clock, BookOpen } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ReadingPosition, Chapter } from '@/lib/saveState';
+
+interface GranularChapter {
+  id: string;
+  number: string;
+  title: string;
+  fullTitle: string;
+  content: string;
+  granularType: 'chapter' | 'subsection';
+  parentChapter?: string;
+  parentNumber?: string;
+  type?: 'h2' | 'h3';
+  level?: number;
+}
 
 interface HeaderProps {
     isDevMode: boolean;
     onDevModeChange: (isDevMode: boolean) => void;
     connectionStatus: 'connected' | 'disconnected' | 'connecting';
     activeView: string;
+    hasReadingPosition?: boolean;
+    onResumeReading?: () => void;
+    readingChapterTitle?: string;
+    readingPosition?: ReadingPosition | null;
+    granularChapters?: GranularChapter[];
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
     isDevMode, 
     onDevModeChange, 
     connectionStatus, 
-    activeView 
+    activeView,
+    hasReadingPosition,
+    onResumeReading,
+    readingChapterTitle,
+    readingPosition,
+    granularChapters
 }) => {
     const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
@@ -39,6 +64,46 @@ export const Header: React.FC<HeaderProps> = ({
         return viewNames[view] || view;
     };
 
+    // Helper function to format the resume button text with chapter and subsection details
+    const getResumeText = (): string => {
+        if (!readingPosition || !granularChapters) {
+            return `Resume: ${readingChapterTitle || 'Reading'}`;
+        }
+
+        // Find the active subsection if it exists
+        if (readingPosition.activeSection) {
+            const activeSubsection = granularChapters.find(
+                ch => ch.id === readingPosition.activeSection && ch.granularType === 'subsection'
+            );
+
+            if (activeSubsection) {
+                // Format as "Chapter Title > Subsection Title"
+                const chapterPart = readingChapterTitle || 'Chapter';
+                const subsectionPart = activeSubsection.title || activeSubsection.fullTitle;
+                
+                // Truncate if too long for better UI
+                const maxLength = 60;
+                const combinedText = `${chapterPart} > ${subsectionPart}`;
+                
+                if (combinedText.length > maxLength) {
+                    // Try to truncate the subsection part while keeping the chapter
+                    const availableForSubsection = maxLength - chapterPart.length - 3; // 3 for " > "
+                    if (availableForSubsection > 10) {
+                        return `${chapterPart} > ${subsectionPart.substring(0, availableForSubsection - 3)}...`;
+                    } else {
+                        // If chapter title is too long, truncate everything
+                        return combinedText.substring(0, maxLength - 3) + '...';
+                    }
+                }
+                
+                return combinedText;
+            }
+        }
+
+        // Fallback to just chapter title
+        return `Resume: ${readingChapterTitle || 'Reading'}`;
+    };
+
     return (
         <header className="h-16 flex items-center justify-between px-6 border-b-2 border-offBlack16 bg-gradient-to-r from-white to-fadedBlue8 shadow-sm flex-shrink-0">
             {/* Left side - Logo and Navigation */}
@@ -62,8 +127,22 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
             </div>
             
-            {/* Right side - Time and shortcuts */}
+            {/* Right side - Resume, Time and shortcuts */}
             <div className="flex items-center space-x-4 text-offBlack">
+                {/* Resume Reading Button */}
+                {hasReadingPosition && onResumeReading && (
+                    <Button
+                        onClick={onResumeReading}
+                        variant="secondary"
+                        size="sm"
+                        className="text-blue hover:text-blue hover:bg-fadedBlue16 max-w-xs"
+                        title={getResumeText()} // Full text in tooltip
+                    >
+                        <BookOpen className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="truncate">{getResumeText()}</span>
+                    </Button>
+                )}
+                
                 <div className="flex items-center space-x-2 text-offBlack/60">
                     <span className="text-xs">Ctrl+L</span>
                     <span className="text-xs">Focus Query</span>

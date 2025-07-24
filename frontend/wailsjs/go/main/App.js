@@ -22,6 +22,10 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function ResetKdbServer() {
+  return window['go']['main']['App']['ResetKdbServer']();
+}
+
 export function RestartKdb() {
   return window['go']['main']['App']['RestartKdb']();
 }

@@ -38,13 +38,12 @@ const resizeHandleVariants = cva(
   }
 )
 
-const ResizableHandle = React.forwardRef<
-  React.ElementRef<typeof PanelResizeHandle>,
-  React.ComponentPropsWithoutRef<typeof PanelResizeHandle> &
-    VariantProps<typeof resizeHandleVariants>
->(({ className, withHandle, ...props }, ref) => (
+const ResizableHandle = ({ 
+  className, 
+  withHandle, 
+  ...props 
+}: React.ComponentPropsWithoutRef<typeof PanelResizeHandle> & VariantProps<typeof resizeHandleVariants>) => (
   <PanelResizeHandle
-    ref={ref}
     className={cn(resizeHandleVariants({ withHandle }), className)}
     {...props}
   >
@@ -54,7 +53,6 @@ const ResizableHandle = React.forwardRef<
       </div>
     )}
   </PanelResizeHandle>
-))
-ResizableHandle.displayName = "ResizableHandle"
+)
 
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle } 

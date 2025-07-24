@@ -3,10 +3,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import table from 'text-table';
 import { KdbWebSocketClient } from './kdb';
 import { GetKdbPort } from '../wailsjs/go/main/App';
+// @ts-ignore - ResetKdbServer exists but TS definitions may be cached
+import { ResetKdbServer } from '../wailsjs/go/main/App';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse } from 'lucide-react';
+import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse, X, BarChart3, RotateCcw } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -21,30 +23,41 @@ interface Result {
   timestamp: string;
 }
 
+// New interface for grouped query/response pairs
+interface ResultGroup {
+  id: string;
+  query: string;
+  queryTimestamp: string;
+  response?: any;
+  responseTimestamp?: string;
+  error?: string;
+  errorTimestamp?: string;
+  isExpanded: boolean;
+}
+
 interface KdbConsoleProps {
   onVisualData?: (data: any) => void;
   onQuerySet?: (setQueryFn: (query: string) => void) => void;
   onConnectionChange?: (status: 'connected' | 'disconnected' | 'connecting') => void;
-  onResumeReading?: () => void;
-  hasReadingPosition?: boolean;
-  readingChapterTitle?: string;
   activeView?: string;
+  onOpenVisualOutput?: () => void;
+  hasVisualData?: boolean;
 }
 
 export const KdbConsole: React.FC<KdbConsoleProps> = ({ 
   onVisualData, 
   onQuerySet, 
   onConnectionChange, 
-  onResumeReading, 
-  hasReadingPosition, 
-  readingChapterTitle,
-  activeView
+  activeView,
+  onOpenVisualOutput,
+  hasVisualData
 }) => {
   const kdbClientRef = useRef<KdbWebSocketClient | null>(null);
   const queryInputRef = useRef<HTMLTextAreaElement>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Result[]>([]);
+  const [resultGroups, setResultGroups] = useState<ResultGroup[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -65,6 +78,19 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   const consoleContainerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const lastQueryTimeRef = useRef(0);
+  
+  // Session management for live/mouse mode
+  interface LiveSession {
+    id: string;
+    mode: 'live' | 'mouse';
+    query: string;
+    startTime: string;
+    endTime?: string;
+    results: any[];
+    isExpanded: boolean;
+  }
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Focus the query input
   const focusQueryInput = useCallback(() => {
@@ -146,23 +172,78 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
             const fullQuery = mousePrefix + lastQuery;
             
             kdbClientRef.current.query(fullQuery).then(result => {
-              // Add to live results
-              setLiveResults(prev => [...prev, { 
-                timestamp: new Date().toLocaleTimeString(),
-                result,
-                coordinates: { x: newX, y: newY }
-              }]);
+              // Check if the result is actually an error object from KDB+
+              const isKdbError = result && typeof result === 'object' && 
+                                (result.error || result.Error || 
+                                 (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
               
-              if (onVisualData && Array.isArray(result)) {
-                onVisualData(result);
+              if (isKdbError) {
+                // Handle KDB+ error objects
+                const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
+                const errorEntry = { 
+                  timestamp: new Date().toLocaleTimeString(),
+                  error: `KDB+ Error: ${errorMessage}`,
+                  coordinates: { x: newX, y: newY }
+                };
+                
+                // Add to live results for current display
+                setLiveResults(prev => [...prev, errorEntry]);
+                
+                // Add to current session
+                if (currentSessionId) {
+                  setLiveSessions(prev => prev.map(session => 
+                    session.id === currentSessionId 
+                      ? { ...session, results: [...session.results, errorEntry] }
+                      : session
+                  ));
+                }
+              } else {
+                // Handle successful results
+                const resultEntry = { 
+                  timestamp: new Date().toLocaleTimeString(),
+                  result,
+                  coordinates: { x: newX, y: newY }
+                };
+                
+                // Add to live results for current display
+                setLiveResults(prev => [...prev, resultEntry]);
+                
+                // Add to current session
+                if (currentSessionId) {
+                  setLiveSessions(prev => prev.map(session => 
+                    session.id === currentSessionId 
+                      ? { ...session, results: [...session.results, resultEntry] }
+                      : session
+                  ));
+                }
+                
+                // Don't update visual data from mouse mode if there are regular query results
+                if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
+                    result !== null && result !== undefined && 
+                    !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined))) && 
+                    resultGroups.length === 0) {
+                  onVisualData(result);
+                }
               }
             }).catch(error => {
               console.error('Live mode query failed:', error);
-              setLiveResults(prev => [...prev, { 
+              const errorEntry = { 
                 timestamp: new Date().toLocaleTimeString(),
                 error: error.message,
                 coordinates: { x: newX, y: newY }
-              }]);
+              };
+              
+              // Add to live results for current display
+              setLiveResults(prev => [...prev, errorEntry]);
+              
+              // Add to current session
+              if (currentSessionId) {
+                setLiveSessions(prev => prev.map(session => 
+                  session.id === currentSessionId 
+                    ? { ...session, results: [...session.results, errorEntry] }
+                    : session
+                ));
+              }
             });
           }
         }
@@ -175,34 +256,92 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
     };
-          }, [isMouseMode, lastQuery, isConnected, isLoading, onVisualData]);
+          }, [isMouseMode, lastQuery, isConnected, isLoading, onVisualData, resultGroups.length]);
 
   // Live mode execution (interval-based)
   useEffect(() => {
     if (isLiveMode && lastQuery && isConnected && !isLoading) {
       const interval = setInterval(() => {
         if (kdbClientRef.current && lastQuery) {
-          const mousePrefix = `mouseX:${mouseX.toFixed(6)}; mouseY:${mouseY.toFixed(6)}; `;
+          // Get current mouse coordinates at the time of execution
+          const currentMouseX = mouseX;
+          const currentMouseY = mouseY;
+          const mousePrefix = `mouseX:${currentMouseX.toFixed(6)}; mouseY:${currentMouseY.toFixed(6)}; `;
           const fullQuery = mousePrefix + lastQuery;
           
           kdbClientRef.current.query(fullQuery).then(result => {
-            // Add to live results
-            setLiveResults(prev => [...prev, { 
-              timestamp: new Date().toLocaleTimeString(),
-              result,
-              coordinates: { x: mouseX, y: mouseY }
-            }]);
+            // Check if the result is actually an error object from KDB+
+            const isKdbError = result && typeof result === 'object' && 
+                              (result.error || result.Error || 
+                               (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
             
-            if (onVisualData && Array.isArray(result)) {
-              onVisualData(result);
+            if (isKdbError) {
+              // Handle KDB+ error objects
+              const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
+              const errorEntry = { 
+                timestamp: new Date().toLocaleTimeString(),
+                error: `KDB+ Error: ${errorMessage}`,
+                coordinates: { x: currentMouseX, y: currentMouseY }
+              };
+              
+              // Add to live results for current display
+              setLiveResults(prev => [...prev, errorEntry]);
+              
+              // Add to current session
+              if (currentSessionId) {
+                setLiveSessions(prev => prev.map(session => 
+                  session.id === currentSessionId 
+                    ? { ...session, results: [...session.results, errorEntry] }
+                    : session
+                ));
+              }
+            } else {
+              // Handle successful results
+              const resultEntry = { 
+                timestamp: new Date().toLocaleTimeString(),
+                result,
+                coordinates: { x: currentMouseX, y: currentMouseY }
+              };
+              
+              // Add to live results for current display
+              setLiveResults(prev => [...prev, resultEntry]);
+              
+              // Add to current session
+              if (currentSessionId) {
+                setLiveSessions(prev => prev.map(session => 
+                  session.id === currentSessionId 
+                    ? { ...session, results: [...session.results, resultEntry] }
+                    : session
+                ));
+              }
+              
+              // Don't update visual data from live mode if there are regular query results
+              if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
+                  result !== null && result !== undefined && 
+                  !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined))) && 
+                  resultGroups.length === 0) {
+                onVisualData(result);
+              }
             }
           }).catch(error => {
             console.error('Live mode query failed:', error);
-            setLiveResults(prev => [...prev, { 
+            const errorEntry = { 
               timestamp: new Date().toLocaleTimeString(),
               error: error.message,
-              coordinates: { x: mouseX, y: mouseY }
-            }]);
+              coordinates: { x: currentMouseX, y: currentMouseY }
+            };
+            
+            // Add to live results for current display
+            setLiveResults(prev => [...prev, errorEntry]);
+            
+            // Add to current session
+            if (currentSessionId) {
+              setLiveSessions(prev => prev.map(session => 
+                session.id === currentSessionId 
+                  ? { ...session, results: [...session.results, errorEntry] }
+                  : session
+              ));
+            }
           });
         }
       }, 100); // 0.1 seconds
@@ -215,36 +354,202 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         liveIntervalRef.current = null;
       }
     }
-  }, [isLiveMode, lastQuery, mouseX, mouseY, isConnected, isLoading, onVisualData]);
+  }, [isLiveMode, lastQuery, isConnected, isLoading, onVisualData, resultGroups.length]); // Removed mouseX, mouseY from dependencies
 
   // Toggle mouse mode
   const toggleMouseMode = useCallback(() => {
-    setIsMouseMode(prev => !prev);
+    const newMouseMode = !isMouseMode;
+    setIsMouseMode(newMouseMode);
+    
     if (isLiveMode) {
       setIsLiveMode(false); // Turn off live mode when enabling mouse mode
     }
-    if (!isMouseMode && query.trim()) {
-      setLastQuery(query.trim());
-      setLiveResults([]); // Clear previous results when starting
+    
+    if (newMouseMode) {
+      // Use current query or fall back to lastQuery
+      const queryToUse = query.trim() || lastQuery;
+      
+      if (queryToUse) {
+        // Starting a new mouse mode session
+        const sessionId = `mouse-${Date.now()}`;
+        const newSession: LiveSession = {
+          id: sessionId,
+          mode: 'mouse',
+          query: queryToUse,
+          startTime: new Date().toLocaleTimeString(),
+          results: [],
+          isExpanded: false
+        };
+        
+        setLiveSessions(prev => [...prev, newSession]);
+        setCurrentSessionId(sessionId);
+        setLastQuery(queryToUse);
+        setLiveResults([]); // Clear current results for new session
+        console.log('Mouse session created:', sessionId, 'Query:', queryToUse);
+      } else {
+        // No query available, revert mouse mode
+        setIsMouseMode(false);
+        console.warn('No query available for mouse mode');
+      }
+    } else if (!newMouseMode && currentSessionId) {
+      // Ending the current session
+      setLiveSessions(prev => prev.map(session => 
+        session.id === currentSessionId 
+          ? { ...session, endTime: new Date().toLocaleTimeString() }
+          : session
+      ));
+      setCurrentSessionId(null);
     }
-  }, [isLiveMode, isMouseMode, query]);
+  }, [isLiveMode, isMouseMode, query, currentSessionId, lastQuery]);
 
   // Toggle live mode
   const toggleLiveMode = useCallback(() => {
-    setIsLiveMode(prev => !prev);
+    const newLiveMode = !isLiveMode;
+    setIsLiveMode(newLiveMode);
+    
     if (isMouseMode) {
       setIsMouseMode(false); // Turn off mouse mode when enabling live mode
     }
-    if (!isLiveMode && query.trim()) {
-      setLastQuery(query.trim());
-      setLiveResults([]); // Clear previous results when starting
+    
+    if (newLiveMode) {
+      // Use current query or fall back to lastQuery
+      const queryToUse = query.trim() || lastQuery;
+      
+      if (queryToUse) {
+        // Starting a new live mode session
+        const sessionId = `live-${Date.now()}`;
+        const newSession: LiveSession = {
+          id: sessionId,
+          mode: 'live',
+          query: queryToUse,
+          startTime: new Date().toLocaleTimeString(),
+          results: [],
+          isExpanded: false
+        };
+        
+        setLiveSessions(prev => [...prev, newSession]);
+        setCurrentSessionId(sessionId);
+        setLastQuery(queryToUse);
+        setLiveResults([]); // Clear current results for new session
+        console.log('Live session created:', sessionId, 'Query:', queryToUse);
+      } else {
+        // No query available, revert live mode
+        setIsLiveMode(false);
+        console.warn('No query available for live mode');
+      }
+    } else if (!newLiveMode && currentSessionId) {
+      // Ending the current session
+      setLiveSessions(prev => prev.map(session => 
+        session.id === currentSessionId 
+          ? { ...session, endTime: new Date().toLocaleTimeString() }
+          : session
+      ));
+      setCurrentSessionId(null);
     }
-  }, [isLiveMode, isMouseMode, query]);
+  }, [isLiveMode, isMouseMode, query, currentSessionId, lastQuery]);
 
   // Clear live results
   const clearLiveResults = useCallback(() => {
     setLiveResults([]);
   }, []);
+  
+  // Clear all sessions
+  const clearAllSessions = useCallback(() => {
+    // End any active live/mouse mode sessions
+    if (currentSessionId) {
+      if (isLiveMode) {
+        setIsLiveMode(false);
+        console.log('Live mode ended due to clearing all sessions');
+      }
+      if (isMouseMode) {
+        setIsMouseMode(false);
+        console.log('Mouse mode ended due to clearing all sessions');
+      }
+    }
+    
+    setLiveSessions([]);
+    setLiveResults([]);
+    setCurrentSessionId(null);
+  }, [currentSessionId, isLiveMode, isMouseMode]);
+  
+  // Toggle session expansion
+  const toggleSessionExpansion = useCallback((sessionId: string) => {
+    setLiveSessions(prev => prev.map(session => 
+      session.id === sessionId 
+        ? { ...session, isExpanded: !session.isExpanded }
+        : session
+    ));
+  }, []);
+  
+  // Remove a specific session
+  const removeSession = useCallback((sessionId: string) => {
+    // Check if we're removing the currently active session
+    if (currentSessionId === sessionId) {
+      // End the current live/mouse mode session properly
+      if (isLiveMode) {
+        setIsLiveMode(false);
+        console.log('Live mode ended due to session deletion:', sessionId);
+      }
+      if (isMouseMode) {
+        setIsMouseMode(false);
+        console.log('Mouse mode ended due to session deletion:', sessionId);
+      }
+      
+      // Clear the current session ID
+      setCurrentSessionId(null);
+      
+      // Clear current live results since the active session is being removed
+      setLiveResults([]);
+    }
+    
+    // Update the session with end time before removing it
+    const currentTime = new Date().toLocaleTimeString();
+    setLiveSessions(prev => 
+      prev.map(session => 
+        session.id === sessionId 
+          ? { ...session, endTime: currentTime }
+          : session
+      ).filter(session => session.id !== sessionId)
+    );
+  }, [currentSessionId, isLiveMode, isMouseMode]);
+
+  // Result group management functions
+  const toggleResultGroupExpansion = useCallback((groupId: string) => {
+    setResultGroups(prev => prev.map(group => 
+      group.id === groupId 
+        ? { ...group, isExpanded: !group.isExpanded }
+        : group
+    ));
+  }, []);
+  
+  const removeResultGroup = useCallback((groupId: string) => {
+    setResultGroups(prev => {
+      const filtered = prev.filter(group => group.id !== groupId);
+      
+      // Update visual output with the last remaining query result
+      if (onVisualData) {
+        const successfulGroups = filtered.filter(group => group.response !== undefined && !group.error);
+        const lastSuccessfulGroup = successfulGroups[successfulGroups.length - 1];
+        
+        if (lastSuccessfulGroup && typeof lastSuccessfulGroup.response !== 'string' && 
+            typeof lastSuccessfulGroup.response !== 'number' && 
+            typeof lastSuccessfulGroup.response !== 'boolean') {
+          onVisualData(lastSuccessfulGroup.response);
+        } else {
+          onVisualData(null);
+        }
+      }
+      
+      return filtered;
+    });
+  }, [onVisualData]);
+
+  const clearAllResultGroups = useCallback(() => {
+    setResultGroups([]);
+    if (onVisualData) {
+      onVisualData(null);
+    }
+  }, [onVisualData]);
 
   useEffect(() => {
     if (resultsRef.current) {
@@ -262,6 +567,13 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     };
   }, []);
 
+  // Clear visual data when results are empty
+  useEffect(() => {
+    if (results.length === 0 && resultGroups.length === 0 && onVisualData) {
+      onVisualData(null);
+    }
+  }, [results.length, resultGroups.length, onVisualData]);
+
   const addResult = useCallback((type: Result['type'], content: any) => {
     const timestamp = new Date().toLocaleTimeString();
     setResults((prev) => [...prev, { type, content, timestamp }]);
@@ -270,41 +582,76 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   useEffect(() => {
     const init = async () => {
       try {
+        console.log('🚀 Initializing KDB WebSocket client...');
         const port = await GetKdbPort();
+        console.log(`📡 Got KDB port from backend: ${port}`);
+        
         if (!kdbClientRef.current) {
-          const client = new KdbWebSocketClient(`ws://localhost:${port}`);
+          const wsUrl = `ws://localhost:${port}`;
+          console.log(`🔗 Creating WebSocket client for: ${wsUrl}`);
+          
+          const client = new KdbWebSocketClient(wsUrl);
+          
           client.setOnConnect(() => {
+            console.log('✅ WebSocket connected successfully!');
             setIsConnected(true);
             setConnectionAttempts(0);
             onConnectionChange?.('connected');
+            
             // Only show success toast on manual connection attempts
             if (connectionAttempts > 0) {
+              console.log('🎉 Showing success toast for manual connection');
               toast.success('Connected successfully!', {
                 duration: 2000,
               });
+            } else {
+              console.log('ℹ️ Skipping success toast - auto connection');
             }
+            
             // Focus input after successful connection
+            console.log('🎯 Focusing input after connection');
             setTimeout(() => focusQueryInput(), 500);
           });
+          
           client.setOnClose(() => {
+            console.log('🔌 WebSocket connection closed');
             setIsConnected(false);
             onConnectionChange?.('disconnected');
+            
             // Only show disconnect toast if it was unexpected (not manual disconnect)
             if (connectionAttempts === 0) {
+              console.log('⚠️ Showing disconnect toast - unexpected disconnection');
               toast.info('Connection lost. Click Connect to reconnect.', {
                 duration: 3000,
               });
+            } else {
+              console.log('ℹ️ Skipping disconnect toast - manual disconnection');
             }
           });
+          
           client.setOnError((error: Error) => {
+            console.error('❌ WebSocket error:', {
+              error,
+              message: error.message,
+              stack: error.stack
+            });
             toast.error(`Connection error: ${error.message}`, {
               duration: 4000,
             });
           });
+          
           kdbClientRef.current = client;
+          console.log('✅ WebSocket client created and configured');
+        } else {
+          console.log('ℹ️ WebSocket client already exists, skipping initialization');
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error('❌ Client initialization failed:', {
+          error,
+          message: errorMessage,
+          stack: error instanceof Error ? error.stack : 'No stack trace'
+        });
         toast.error(`Initialization failed: ${errorMessage}`, {
           duration: 4000,
         });
@@ -315,18 +662,33 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
 
   const handleConnect = useCallback(async () => {
     if (!kdbClientRef.current) {
+      console.error('❌ Connect failed: Client not initialized');
       toast.error('Client not initialized.', {
         duration: 3000,
       });
       return;
     }
+    
+    console.log('🔌 Starting connection process...');
     setIsLoading(true);
-    setConnectionAttempts(prev => prev + 1);
+    setConnectionAttempts(prev => {
+      const newAttempts = prev + 1;
+      console.log(`📞 Connection attempt #${newAttempts}`);
+      return newAttempts;
+    });
     onConnectionChange?.('connecting');
+    
     try {
+      console.log('📡 Calling client.connect()...');
       await kdbClientRef.current.connect();
+      console.log('✅ Connection successful!');
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error('❌ Connection failed:', {
+          error,
+          message: errorMessage,
+          stack: error instanceof Error ? error.stack : 'No stack trace'
+        });
         onConnectionChange?.('disconnected');
         toast.error(`Connection failed: ${errorMessage}`, {
           duration: 4000,
@@ -334,6 +696,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         });
     } finally {
       setIsLoading(false);
+      console.log('🏁 Connection process finished (loading state cleared)');
     }
   }, []);
 
@@ -344,9 +707,15 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     setTimeout(() => focusQueryInput(), 100);
   }, [focusQueryInput]);
 
-  const executeQuery = useCallback(async () => {
-    if (!query.trim() || !kdbClientRef.current) return;
+    const executeQuery = useCallback(async () => {
+    if (!query.trim() || !kdbClientRef.current) {
+      console.log('⚠️ Query execution skipped - empty query or no client');
+      return;
+    }
 
+    console.log('🚀 Starting query execution...');
+    console.log('📝 Original query:', query.trim());
+    
     setIsLoading(true);
     
     // Always prepend mouse coordinates to queries
@@ -354,44 +723,316 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     const finalQuery = mousePrefix + query.trim();
     setLastQuery(query.trim()); // Store the original query for live mode
     
-    addResult('query', query);
+    console.log('🎯 Final query with coordinates:', finalQuery);
+    console.log('🕐 Query execution started at:', new Date().toISOString());
+    
+    // Create a new result group for this query
+    const groupId = `query-${Date.now()}`;
+    const queryTimestamp = new Date().toLocaleTimeString();
+    
+    const newGroup: ResultGroup = {
+      id: groupId,
+      query: query.trim(),
+      queryTimestamp,
+      isExpanded: false // Start collapsed for cleaner interface
+    };
+    
+    console.log('📊 Created result group:', groupId);
+    setResultGroups(prev => [...prev, newGroup]);
 
     // Add to history if it's not already the last item
     setQueryHistory(prev => {
       if (prev.length === 0 || prev[prev.length - 1] !== query.trim()) {
+        console.log('📚 Added to query history:', query.trim());
         return [...prev, query.trim()];
       }
       return prev;
     });
 
     try {
+      console.log('📤 Sending query to KDB server...');
       const result = await kdbClientRef.current.query(finalQuery);
-      addResult('response', result);
-      // if result looks like tabular data, forward to visual output
-      if (onVisualData && Array.isArray(result)) {
-        onVisualData(result);
+      const responseTimestamp = new Date().toLocaleTimeString();
+      
+      console.log('📨 Raw query result received:', result);
+      console.log('📨 Result type:', typeof result);
+      console.log('📨 Result received at:', responseTimestamp);
+      
+      // Check if the result is actually an error object from KDB+
+      const isKdbError = result && typeof result === 'object' && 
+                        (result.error || result.Error || 
+                         (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
+      
+      if (isKdbError) {
+        // Treat KDB+ error objects as errors
+        const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
+        console.error('❌ Query returned KDB+ error:', {
+          fullResult: result,
+          extractedError: errorMessage,
+          originalQuery: query.trim(),
+          finalQuery: finalQuery
+        });
+        setResultGroups(prev => prev.map(group => 
+          group.id === groupId 
+            ? { ...group, error: `KDB+ Error: ${errorMessage}`, errorTimestamp: responseTimestamp }
+            : group
+        ));
+      } else {
+        // Update the result group with the successful response
+        console.log('✅ Query executed successfully');
+        console.log('✅ Success result details:', {
+          resultType: typeof result,
+          isArray: Array.isArray(result),
+          arrayLength: Array.isArray(result) ? result.length : 'N/A',
+          resultPreview: typeof result === 'object' ? JSON.stringify(result).substring(0, 200) + '...' : String(result).substring(0, 200),
+          originalQuery: query.trim()
+        });
+        
+        setResultGroups(prev => prev.map(group => 
+          group.id === groupId 
+            ? { ...group, response: result, responseTimestamp }
+            : group
+        ));
+        
+        // Forward the last query result to visual output, but exclude plain text, single values, and null/invalid data
+        if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
+            result !== null && result !== undefined && 
+            !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined)))) {
+          console.log('📊 Forwarding result to visual output');
+          onVisualData(result);
+        } else {
+          console.log('🚫 Not forwarding to visual output - result is simple value or null/empty');
+        }
       }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error)
-        addResult('error', `Query failed: ${errorMessage}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorTimestamp = new Date().toLocaleTimeString();
+        
+        console.error('❌ Query execution exception:', {
+          error,
+          message: errorMessage,
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          originalQuery: query.trim(),
+          finalQuery: finalQuery
+        });
+        
+        // Update the result group with the error
+        setResultGroups(prev => prev.map(group => 
+          group.id === groupId 
+            ? { ...group, error: `Query failed: ${errorMessage}`, errorTimestamp }
+            : group
+        ));
     } finally {
       setIsLoading(false);
       setQuery('');
       setHistoryIndex(-1);
       setTempQuery('');
+      console.log('🏁 Query execution finished, input cleared and focused');
       // Focus the input after query execution
       setTimeout(() => focusQueryInput(), 100);
     }
-      }, [query, addResult, onVisualData, focusQueryInput, mouseX, mouseY]);
+  }, [query, onVisualData, focusQueryInput, mouseX, mouseY]);
 
   const clearResults = () => {
     setResults([]);
-    if (onVisualData) {
-      onVisualData(null);
-    }
+    clearAllResultGroups();
     // Focus input after clearing results
     setTimeout(() => focusQueryInput(), 100);
   };
+
+  // Comprehensive console clear function that resets everything to initial state
+  const clearConsole = useCallback(() => {
+    // Stop any active modes first
+    if (isLiveMode) {
+      setIsLiveMode(false);
+    }
+    if (isMouseMode) {
+      setIsMouseMode(false);
+    }
+    
+    // Clear intervals
+    if (liveIntervalRef.current) {
+      clearInterval(liveIntervalRef.current);
+      liveIntervalRef.current = null;
+    }
+    
+    // Reset all result-related state
+    setResults([]);
+    setResultGroups([]);
+    setLiveResults([]);
+    setLiveSessions([]);
+    
+    // Reset query and input state
+    setQuery('');
+    setQueryHistory([]);
+    setHistoryIndex(-1);
+    setTempQuery('');
+    setLastQuery('');
+    
+    // Reset session state
+    setCurrentSessionId(null);
+    
+    // Clear visual data
+    if (onVisualData) {
+      onVisualData(null);
+    }
+    
+    // Show success feedback
+    toast.success('Console cleared successfully', {
+      duration: 2000,
+    });
+    
+    // Focus input after clearing
+    setTimeout(() => focusQueryInput(), 100);
+  }, [isLiveMode, isMouseMode, onVisualData, focusQueryInput]);
+
+  // Check if there's anything to clear
+  const hasDataToClear = results.length > 0 || 
+                        resultGroups.length > 0 || 
+                        liveSessions.length > 0 || 
+                        liveResults.length > 0 || 
+                        query.trim().length > 0 || 
+                        queryHistory.length > 0;
+
+  // Reset KDB server - clears all variables, tables, and state on server side
+  const resetServer = useCallback(async () => {
+    console.log('🔍 Reset server called - checking connection state:');
+    console.log('  - React isConnected:', isConnected);
+    console.log('  - kdbClientRef.current:', kdbClientRef.current ? 'exists' : 'null');
+    console.log('  - WebSocket isConnected:', kdbClientRef.current?.getIsConnected());
+    
+    // Check both React state and actual WebSocket connection
+    const wsConnected = kdbClientRef.current?.getIsConnected();
+    if (!wsConnected || !kdbClientRef.current) {
+      console.error('❌ Reset server failed: Not connected to KDB server');
+      console.error('  - React isConnected:', isConnected);
+      console.error('  - WebSocket isConnected:', wsConnected);
+      console.error('  - kdbClientRef.current:', kdbClientRef.current ? 'exists' : 'null');
+      toast.error('Not connected to KDB server', {
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = window.confirm(
+      'Are you sure you want to reset the KDB server?\n\n' +
+      'This will:\n' +
+      '• Delete ALL variables and tables\n' +
+      '• Clear ALL server state\n' +
+      '• Reset the KDB environment\n\n' +
+      'This action cannot be undone!'
+    );
+
+    if (!confirmed) {
+      console.log('🚫 Reset server cancelled by user');
+      return;
+    }
+
+    console.log('🔄 Starting KDB server reset process...');
+    setIsLoading(true);
+    
+    try {
+      console.log('📡 Calling backend ResetKdbServer() function...');
+      
+      // Get the reset command from the backend - better separation of concerns
+      const resetCommand = await ResetKdbServer();
+      
+      console.log('📥 Backend response:', resetCommand);
+      
+      if (resetCommand.startsWith('ERROR:')) {
+        console.error('❌ Backend returned error:', resetCommand);
+        toast.error(resetCommand, {
+          duration: 4000,
+        });
+        return;
+      }
+
+      console.log('📤 Executing reset command on KDB server:', resetCommand);
+      console.log('🕐 Command execution started at:', new Date().toISOString());
+      
+      const result = await kdbClientRef.current.query(resetCommand);
+      
+      console.log('📨 Raw KDB server response:', result);
+      console.log('📨 Response type:', typeof result);
+      console.log('📨 Response received at:', new Date().toISOString());
+      
+      // Check if the result is an error object
+      const isKdbError = result && typeof result === 'object' && 
+                        (result.error || result.Error || 
+                         (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
+      
+      if (isKdbError) {
+        const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
+        console.error('❌ KDB+ returned error object:', {
+          fullResult: result,
+          extractedError: errorMessage
+        });
+        toast.error(`Reset failed: ${errorMessage}`, {
+          duration: 4000,
+        });
+      } else {
+        // Handle successful reset
+        const successMessage = typeof result === 'object' && result.message ? 
+          result.message : 
+          String(result);
+        
+        console.log('✅ KDB server reset successful!');
+        console.log('✅ Success message:', successMessage);
+        console.log('✅ Full result:', result);
+        
+        toast.success(successMessage, {
+          duration: 3000,
+        });
+
+        // Also clear local console state
+        console.log('🧹 Clearing local console state...');
+        clearConsole();
+        console.log('✅ Reset process completed successfully');
+      }
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('❌ Reset server exception caught:', {
+        error,
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+      toast.error(`Server reset failed: ${errorMessage}`, {
+        duration: 4000,
+      });
+    } finally {
+      setIsLoading(false);
+      console.log('🏁 Reset server process finished (loading state cleared)');
+    }
+  }, [isConnected, clearConsole]);
+
+  // Global keyboard shortcuts for console operations
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle shortcuts when console is active and not typing in input
+      if (activeView !== 'console' || document.activeElement === queryInputRef.current) return;
+      
+      // Ctrl/Cmd + Shift + X to clear console
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'X') {
+        e.preventDefault();
+        if (hasDataToClear) {
+          clearConsole();
+        }
+      }
+      
+      // Ctrl/Cmd + Shift + R to reset server
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+        e.preventDefault();
+        if (isConnected) {
+          resetServer();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [activeView, clearConsole, hasDataToClear, isConnected, resetServer]);
 
   const handleQueryChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setQuery(e.target.value);
@@ -748,9 +1389,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                         onClick={toggleMouseMode}
                         variant={isMouseMode ? "secondary" : "outline"}
                         size="sm"
-                        className="text-green-600 hover:text-green-600"
+                        className={`text-green-600 hover:text-green-600 ${isMouseMode ? 'bg-green-100' : ''}`}
                         title="Toggle mouse mode (execute on mouse movement)"
-                        disabled={!query.trim() && !lastQuery}
+                        disabled={!(query.trim() || lastQuery)}
                     >
                         <Mouse className="h-4 w-4" />
                     </Button>
@@ -762,24 +1403,24 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                         size="sm"
                         className="text-orange-600 hover:text-orange-600"
                         title="Toggle live mode (auto re-execute every 0.1s)"
-                        disabled={!query.trim() && !lastQuery}
+                        disabled={!(query.trim() || lastQuery)}
                     >
                         {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </Button>
                     
-                    {hasReadingPosition && onResumeReading && (
+
+                    
+                    {/* Visual Output Button */}
+                    {onOpenVisualOutput && hasVisualData && (
                         <Button
-                            onClick={() => {
-                                onResumeReading();
-                                // Focus input after resuming reading
-                                setTimeout(() => focusQueryInput(), 100);
-                            }}
+                            onClick={onOpenVisualOutput}
                             variant="secondary"
                             size="sm"
                             className="text-blue hover:text-blue hover:bg-fadedBlue16"
+                            title="Open Visual Output"
                         >
-                            <BookOpen className="h-4 w-4 mr-2" />
-                            Resume: {readingChapterTitle || 'Reading'}
+                            <BarChart3 className="h-4 w-4 mr-2" />
+                            Visual Output
                         </Button>
                     )}
                 </div>
@@ -792,103 +1433,290 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                 onClick={handleConsoleClick}
             >
               <div ref={resultsRef} className="flex-1 p-4 overflow-y-auto font-mono text-sm space-y-4 console-results">
-                  {results.map((result, index) => (
-                      <div key={index} className="flex items-start">
-                          <span className="text-offBlack/50 mr-2 select-none">{result.timestamp}</span>
-                          <span className={`mr-2 font-bold ${
-                              result.type === 'query' ? 'text-blue' :
-                              result.type === 'error' ? 'text-red' :
-                              result.type === 'system' ? 'text-gold' :
-                              'text-green'
-                          }`}>
-                              {result.type === 'query' ? '>' : result.type === 'error' ? '!' : result.type === 'system' ? '#' : '<'}
-                          </span>
-                          <pre className="flex-1 whitespace-pre-wrap break-words">{formatResult(result.content)}</pre>
-                      </div>
-                  ))}
-                  
-                  {/* Interactive Mode Output */}
-                  {(isLiveMode || isMouseMode) && liveResults.length > 0 && (
-                      <div className="border-t border-offBlack16 pt-4">
-                          <div className="flex items-center justify-between mb-3">
-                              <div className="flex items-center space-x-2">
-                                  <span className={`font-bold ${isLiveMode ? 'text-orange-600' : 'text-green-600'}`}>
-                                      {isLiveMode ? 'LIVE' : 'MOUSE'}
-                                  </span>
-                                  <span className="text-offBlack/70 text-xs">
-                                      {liveResults.length} results • {liveResults.length > 0 && liveResults[liveResults.length - 1].timestamp}
-                                  </span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                  <Button
-                                      onClick={clearLiveResults}
-                                      variant="outline"
-                                      size="sm"
-                                      className="text-red-600 hover:text-red-600"
-                                      title="Clear live results"
-                                  >
-                                      <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                  <Button
-                                      onClick={() => setIsLiveOutputExpanded(!isLiveOutputExpanded)}
-                                      variant="outline"
-                                      size="sm"
-                                      className="text-blue-600 hover:text-blue-600"
-                                      title={isLiveOutputExpanded ? "Collapse results" : "Expand results"}
-                                  >
-                                      {isLiveOutputExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                                  </Button>
-                              </div>
-                          </div>
+                  {(() => {
+                      // Create combined array of result groups, results, and sessions, sorted by timestamp
+                      const combinedEntries = [
+                          // Result groups
+                          ...resultGroups.map((group) => ({
+                              type: 'resultGroup' as const,
+                              data: group,
+                              timestamp: group.queryTimestamp,
+                              key: group.id
+                          })),
+                          // Regular results (keeping for backwards compatibility)
+                          ...results.map((result, index) => ({
+                              type: 'result' as const,
+                              data: result,
+                              timestamp: result.timestamp,
+                              key: `result-${index}`
+                          })),
+                          // Session entries
+                          ...liveSessions.map((session) => ({
+                              type: 'session' as const,
+                              data: session,
+                              timestamp: session.startTime,
+                              key: session.id
+                          }))
+                      ].sort((a, b) => {
+                          // Sort by timestamp (oldest first, newest at bottom)
+                          // Convert time strings like "10:30:15" to comparable format
+                          const parseTime = (timeStr: string) => {
+                              const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+                              return hours * 3600 + minutes * 60 + seconds;
+                          };
                           
-                          {isLiveOutputExpanded ? (
-                              // Show all results
-                              <div className="space-y-2 max-h-96 overflow-y-auto">
-                                  {liveResults.map((liveResult, index) => (
-                                      <div key={index} className="flex items-start bg-offBlack/5 p-2 rounded">
-                                          <span className="text-offBlack/50 mr-2 select-none text-xs">{liveResult.timestamp}</span>
-                                          <span className="text-purple-600 mr-2 font-bold text-xs">
-                                              ({liveResult.coordinates.x.toFixed(3)}, {liveResult.coordinates.y.toFixed(3)})
-                                          </span>
-                                          <span className={`mr-2 font-bold text-xs ${
-                                              liveResult.error ? 'text-red' : 'text-green'
-                                          }`}>
-                                              {liveResult.error ? '!' : '<'}
-                                          </span>
-                                          <pre className="flex-1 whitespace-pre-wrap break-words text-xs">
-                                              {liveResult.error ? liveResult.error : formatResult(liveResult.result)}
-                                          </pre>
+                          const timeA = parseTime(a.timestamp);
+                          const timeB = parseTime(b.timestamp);
+                          return timeA - timeB;
+                      });
+
+                      return combinedEntries.map((entry) => {
+                          if (entry.type === 'result') {
+                              const result = entry.data;
+                              return (
+                                  <div key={entry.key} className="flex items-start">
+                                      <span className="text-offBlack/50 mr-2 select-none">{result.timestamp}</span>
+                                      <span className={`mr-2 font-bold ${
+                                          result.type === 'query' ? 'text-blue' :
+                                          result.type === 'error' ? 'text-red' :
+                                          result.type === 'system' ? 'text-gold' :
+                                          'text-green'
+                                      }`}>
+                                          {result.type === 'query' ? '>' : result.type === 'error' ? '!' : result.type === 'system' ? '#' : '<'}
+                                      </span>
+                                      <pre className="flex-1 whitespace-pre-wrap break-words">{formatResult(result.content)}</pre>
+                                  </div>
+                              );
+                          } else if (entry.type === 'resultGroup') {
+                              // Query/Response group
+                              const group = entry.data as ResultGroup;
+                              return (
+                                  <div key={entry.key} className="border border-offBlack/20 rounded-lg p-3 bg-offBlack/5">
+                                      <div 
+                                          className="flex items-center justify-between cursor-pointer hover:bg-offBlack/10 rounded p-2 -m-2"
+                                          onClick={() => toggleResultGroupExpansion(group.id)}
+                                      >
+                                          <div className="flex-1">
+                                              <div className="flex items-center space-x-2">
+                                                  <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                      QUERY
+                                                  </span>
+                                                  <span className="text-offBlack/70 text-sm">
+                                                      {group.queryTimestamp}
+                                                  </span>
+                                                  <span className={`text-xs font-medium ${
+                                                      group.error ? 'text-red-600 bg-red-50 px-2 py-1 rounded' : 
+                                                      group.response !== undefined ? 'text-green-600 bg-green-50 px-2 py-1 rounded' : 'text-yellow-600 bg-yellow-50 px-2 py-1 rounded'
+                                                  }`}>
+                                                      {group.error ? '⚠️ Error' : 
+                                                       group.response !== undefined ? '✅ Success' : '⏳ Pending'}
+                                                  </span>
+                                              </div>
+                                              
+                                              {/* Query Preview */}
+                                              <div className="mt-1 text-xs text-offBlack/70">
+                                                  <strong>Query:</strong> <code className="bg-offBlack/10 px-1 rounded">{group.query}</code>
+                                              </div>
+                                              
+                                              {/* Summary when collapsed */}
+                                              {!group.isExpanded && group.response !== undefined && (
+                                                  <div className="mt-2 text-xs text-offBlack/60">
+                                                      <span className="text-green-600">
+                                                          Result: {(() => {
+                                                              const response = group.response;
+                                                              if (typeof response === 'object') {
+                                                                  if (Array.isArray(response)) {
+                                                                      if (response.length === 0) return 'Empty Array';
+                                                                      if (response.length > 0 && response.every(item => typeof item === 'object' && item !== null && !Array.isArray(item))) {
+                                                                          return `Table (${response.length} rows)`;
+                                                                      }
+                                                                      return `Array(${response.length})`;
+                                                                  } else if (response === null) {
+                                                                      return 'null';
+                                                                  } else {
+                                                                      const keys = Object.keys(response);
+                                                                      if (keys.length === 0) return 'Empty Object';
+                                                                      return `Object (${keys.length} properties)`;
+                                                                  }
+                                                              }
+                                                              const str = String(response);
+                                                              return str.length > 50 ? str.substring(0, 50) + '...' : str;
+                                                          })()}
+                                                      </span>
+                                                      <div className="text-blue-600 mt-1">Click to expand full result</div>
+                                                  </div>
+                                              )}
+                                              
+                                              {!group.isExpanded && group.error && (
+                                                  <div className="mt-2 text-xs text-red-600">
+                                                      <span className="font-medium">⚠️ Error:</span> {group.error.substring(0, 80)}{group.error.length > 80 ? '...' : ''}
+                                                      <div className="text-blue-600 mt-1 font-medium">Click to expand full error details</div>
+                                                  </div>
+                                              )}
+                                          </div>
+                                          <div className="flex items-center space-x-1">
+                                              <Button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      removeResultGroup(group.id);
+                                                  }}
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="text-red-600 hover:text-red-600 h-6 w-6 p-0"
+                                                  title="Remove result group"
+                                              >
+                                                  <X className="h-3 w-3" />
+                                              </Button>
+                                              {group.isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                          </div>
                                       </div>
-                                  ))}
-                              </div>
-                          ) : (
-                              // Show summary
-                              <div className="bg-offBlack/5 p-3 rounded">
-                                  <div className="text-sm text-offBlack/70 mb-2">
-                                      <strong>Latest Result:</strong> {liveResults.length > 0 && liveResults[liveResults.length - 1].timestamp}
-                                  </div>
-                                  <div className="text-xs text-offBlack/60">
-                                      <div>Coordinates: ({liveResults.length > 0 && liveResults[liveResults.length - 1].coordinates.x.toFixed(3)}, {liveResults.length > 0 && liveResults[liveResults.length - 1].coordinates.y.toFixed(3)})</div>
-                                      {liveResults.length > 0 && !liveResults[liveResults.length - 1].error && (
-                                          <div className="mt-1">
-                                              <strong>Output:</strong> {typeof liveResults[liveResults.length - 1].result === 'object' ? 
-                                                  (Array.isArray(liveResults[liveResults.length - 1].result) ? 
-                                                      `${liveResults[liveResults.length - 1].result.length} items` : 
-                                                      'Object') : 
-                                                  String(liveResults[liveResults.length - 1].result).substring(0, 100)
-                                              }{String(liveResults[liveResults.length - 1].result).length > 100 ? '...' : ''}
+                                      
+                                      {/* Expanded Results */}
+                                      {group.isExpanded && (
+                                          <div className="mt-3 ml-4 border-l-2 border-offBlack/20 pl-4">
+                                              <div className="space-y-3">
+                                                  {/* Query */}
+                                                  <div className="flex items-start text-sm">
+                                                      <span className="text-offBlack/40 mr-2 select-none text-xs">{group.queryTimestamp}</span>
+                                                      <span className="mr-2 font-bold text-blue">{'>'}</span>
+                                                      <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{group.query}</pre>
+                                                  </div>
+                                                  
+                                                  {/* Response or Error */}
+                                                  {group.response !== undefined && (
+                                                      <div className="flex items-start text-sm">
+                                                          <span className="text-offBlack/40 mr-2 select-none text-xs">{group.responseTimestamp}</span>
+                                                          <span className="mr-2 font-bold text-green">{'<'}</span>
+                                                          <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{formatResult(group.response)}</pre>
+                                                      </div>
+                                                  )}
+                                                  
+                                                  {group.error && (
+                                                      <div className="flex items-start text-sm">
+                                                          <span className="text-offBlack/40 mr-2 select-none text-xs">{group.errorTimestamp}</span>
+                                                          <span className="mr-2 font-bold text-red">!</span>
+                                                          <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{group.error}</pre>
+                                                      </div>
+                                                  )}
+                                              </div>
                                           </div>
                                       )}
-                                      {liveResults.length > 0 && liveResults[liveResults.length - 1].error && (
-                                          <div className="mt-1 text-red-600">
-                                              <strong>Error:</strong> {liveResults[liveResults.length - 1].error}
+                                  </div>
+                              );
+                          } else {
+                              // Live/Mouse session
+                              const session = entry.data as LiveSession;
+                              return (
+                                  <div key={entry.key} className="border border-offBlack/20 rounded-lg p-3 bg-offBlack/5">
+                                      <div 
+                                          className="flex items-center justify-between cursor-pointer hover:bg-offBlack/10 rounded p-2 -m-2"
+                                          onClick={() => toggleSessionExpansion(session.id)}
+                                      >
+                                          <div className="flex-1">
+                                              <div className="flex items-center space-x-2">
+                                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                                      session.mode === 'live' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'
+                                                  }`}>
+                                                      {session.mode === 'live' ? 'LIVE' : 'MOUSE'}
+                                                  </span>
+                                                  <span className="text-offBlack/70 text-sm">
+                                                      {session.results.length} results
+                                                  </span>
+                                                  {session.endTime ? (
+                                                      <span className="text-offBlack/50 text-xs">
+                                                          {session.startTime} - {session.endTime}
+                                                      </span>
+                                                  ) : (
+                                                      <span className="text-green-600 text-xs animate-pulse">
+                                                          Active
+                                                      </span>
+                                                  )}
+                                                  {session.results.length > 0 && (
+                                                      <span className="text-blue-600 text-xs">
+                                                          Last: {session.results[session.results.length - 1].timestamp}
+                                                      </span>
+                                                  )}
+                                              </div>
+                                              
+                                              {/* Session Query */}
+                                              <div className="mt-1 text-xs text-offBlack/70">
+                                                  <strong>Query:</strong> <code className="bg-offBlack/10 px-1 rounded">{session.query}</code>
+                                              </div>
+                                              
+                                              {/* Session Summary (when collapsed) */}
+                                              {!session.isExpanded && session.results.length > 0 && (
+                                                  <div className="mt-2 text-xs text-offBlack/60">
+                                                      <div className="flex items-center space-x-4">
+                                                          {session.results[session.results.length - 1].error ? (
+                                                              <span className="text-red-600">Last result: Error</span>
+                                                          ) : (
+                                                              <span className="text-green-600">
+                                                                  Last result: {typeof session.results[session.results.length - 1].result === 'object' ? 
+                                                                      (Array.isArray(session.results[session.results.length - 1].result) ? 
+                                                                          `Array(${session.results[session.results.length - 1].result.length})` : 
+                                                                          'Object') : 
+                                                                      String(session.results[session.results.length - 1].result).substring(0, 50)
+                                                                  }{String(session.results[session.results.length - 1].result).length > 50 ? '...' : ''}
+                                                              </span>
+                                                          )}
+                                                      </div>
+                                                      <div className="text-blue-600 mt-1">Click to expand {session.results.length} results</div>
+                                                  </div>
+                                              )}
+                                          </div>
+                                          <div className="flex items-center space-x-1">
+                                              <Button
+                                                  onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      removeSession(session.id);
+                                                  }}
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  className="text-red-600 hover:text-red-600 h-6 w-6 p-0"
+                                                  title="Remove session"
+                                              >
+                                                  <X className="h-3 w-3" />
+                                              </Button>
+                                              {session.isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                                          </div>
+                                      </div>
+                                      
+                                      {/* Session Results (when expanded) */}
+                                      {session.isExpanded && (
+                                          <div className="mt-3 ml-4 border-l-2 border-offBlack/20 pl-4">
+                                              <div className="max-h-96 overflow-y-auto">
+                                                  {session.results.length > 0 ? (
+                                                      <div className="space-y-2">
+                                                          {session.results.map((result, resultIndex) => (
+                                                              <div key={resultIndex} className="flex items-start text-sm">
+                                                                  <span className="text-offBlack/40 mr-2 select-none text-xs">{result.timestamp}</span>
+                                                                  <span className="text-purple-600 mr-2 font-mono text-xs">
+                                                                      ({result.coordinates.x.toFixed(3)}, {result.coordinates.y.toFixed(3)})
+                                                                  </span>
+                                                                  <span className={`mr-2 font-bold ${
+                                                                      result.error ? 'text-red' : 'text-green'
+                                                                  }`}>
+                                                                      {result.error ? '!' : '<'}
+                                                                  </span>
+                                                                  <pre className="flex-1 whitespace-pre-wrap break-words text-xs">
+                                                                      {result.error ? result.error : formatResult(result.result)}
+                                                                  </pre>
+                                                              </div>
+                                                          ))}
+                                                      </div>
+                                                  ) : (
+                                                      <div className="text-center text-offBlack/50 text-sm py-4">
+                                                          No results yet
+                                                      </div>
+                                                  )}
+                                              </div>
                                           </div>
                                       )}
                                   </div>
-                              </div>
-                          )}
-                      </div>
-                  )}
+                              );
+                          }
+                      });
+                  })()}
               </div>
 
               <div className={`p-2 border-t border-offBlack16 flex-shrink-0 transition-all duration-200 ${isInputFocused ? 'bg-blue/5' : ''}`}>
@@ -908,7 +1736,27 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
               <div className="px-4 py-2 border-t border-offBlack16 flex items-center justify-between flex-shrink-0">
                   <StatusBar isConnected={isConnected} isLoading={isLoading} />
                   <div className="flex items-center space-x-2">
-                      <Button onClick={clearResults} variant="destructive" size="sm" disabled={results.length === 0}>Clear</Button>
+                      <Button 
+                          onClick={clearConsole} 
+                          variant="destructive" 
+                          size="sm" 
+                          disabled={!hasDataToClear}
+                          title={hasDataToClear ? "Clear all console data, queries, and reset state (Ctrl+Shift+X)" : "Nothing to clear"}
+                      >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Clear Console
+                      </Button>
+                      <Button 
+                          onClick={resetServer} 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={!isConnected || isLoading}
+                          title={isConnected ? "Reset KDB server - delete all variables, tables, and state (Ctrl+Shift+R)" : "Not connected to server"}
+                          className="border-orange-500 text-orange-600 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-600"
+                      >
+                          <RotateCcw className="h-3 w-3 mr-1" />
+                          Reset Server
+                      </Button>
                       {isConnected ? (
                           <Button onClick={handleDisconnect} variant="secondary" size="sm">Disconnect</Button>
                       ) : (

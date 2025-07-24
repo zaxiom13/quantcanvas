@@ -11,6 +11,8 @@ export function GetKdbStatus():Promise<string>;
 
 export function Greet(arg1:string):Promise<string>;
 
+export function ResetKdbServer():Promise<string>;
+
 export function RestartKdb():Promise<void>;
 
 export function StartKdb():Promise<void>;

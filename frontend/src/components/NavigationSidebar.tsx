@@ -35,6 +35,7 @@ interface NavigationSidebarProps {
   onViewChange: (view: string) => void;
   onLearningGuideOpen: () => void;
   onChapterSelect: (chapter: Chapter) => void;
+  onChapterSearchOpen: () => void;
   isDevMode: boolean;
   onDevModeChange: (isDevMode: boolean) => void;
 }
@@ -152,6 +153,8 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
                   )}
                 </div>
               </Button>
+              
+
 
               {/* Q for Mortals Chapters Section */}
               {!isCollapsed && (

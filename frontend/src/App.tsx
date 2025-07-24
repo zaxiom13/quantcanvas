@@ -1,7 +1,7 @@
 import React from 'react';
 import { KdbConsole } from '@/KdbConsole';
 import { Toaster } from '@/components/ui/sonner';
-import { VisualOutput } from '@/components/VisualOutput';
+import { SimpleVisualOutput } from '@/components/SimpleVisualOutput';
 import { Header } from '@/components/Header';
 import { NavigationSidebar } from '@/components/NavigationSidebar';
 import { ReferenceCard } from '@/components/ReferenceCard';
@@ -11,20 +11,50 @@ import { chapterLoader } from '@/lib/chapterLoader';
 
 const { useState, useRef, useEffect } = React;
 
-
+interface GranularChapter {
+  id: string;
+  number: string;
+  title: string;
+  fullTitle: string;
+  content: string;
+  granularType: 'chapter' | 'subsection';
+  parentChapter?: string;
+  parentNumber?: string;
+  type?: 'h2' | 'h3';
+  level?: number;
+}
 
 function App() {
   const [isDevMode, setIsDevMode] = useState(false);
   const [visualData, setVisualData] = useState<any>(null);
+  
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isVisualOutputCollapsed, setIsVisualOutputCollapsed] = useState(true);
+  const [isVisualOutputOpen, setIsVisualOutputOpen] = useState(false);
   const [activeView, setActiveView] = useState('console');
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
   const [readingPosition, setReadingPosition] = useState<ReadingPosition | null>(null);
+  const [granularChapters, setGranularChapters] = useState<GranularChapter[]>([]);
   const setQueryRef = useRef<((query: string) => void) | null>(null);
+
+  // Load granular chapters data
+  useEffect(() => {
+    const loadGranularChapters = async () => {
+      try {
+        const response = await fetch('/src/data/chapters_granular.json');
+        const data = await response.json();
+        setGranularChapters(data);
+        console.log('Loaded granular chapters for header:', data.length, 'chapters');
+      } catch (error) {
+        console.error('Failed to load granular chapters for header:', error);
+      }
+    };
+    
+    loadGranularChapters();
+  }, []);
 
   // Load save state on component mount
   useEffect(() => {
@@ -84,14 +114,12 @@ function App() {
     }, 300);
   };
 
-  const toggleVisualOutput = () => {
-    setIsVisualOutputCollapsed(!isVisualOutputCollapsed);
-    // Focus query input after layout change
-    setTimeout(() => {
-      if (setQueryRef.current) {
-        setQueryRef.current('');
-      }
-    }, 300);
+  const openVisualOutput = () => {
+    setIsVisualOutputOpen(true);
+  };
+
+  const closeVisualOutput = () => {
+    setIsVisualOutputOpen(false);
   };
 
   const handleQuerySet = (setQueryFn: (query: string) => void) => {
@@ -119,6 +147,13 @@ function App() {
     setIsLearningGuideOpen(false);
   };
 
+  const openChapterSearch = () => {
+    // TODO: Implement chapter search functionality
+    console.log('Chapter search requested');
+  };
+
+
+
   const handleChapterSelect = (chapter: Chapter) => {
     setSelectedChapter(chapter);
     saveStateManager.updateSelectedChapter(chapter);
@@ -133,7 +168,7 @@ function App() {
 
   // Update save state when reading position changes
   const handleReadingPositionChange = (position: ReadingPosition | null) => {
-    setReadingPosition(position);
+    setReadingPosition(position); // Update local state
     saveStateManager.updateReadingPosition(position);
   };
 
@@ -145,6 +180,11 @@ function App() {
         onDevModeChange={setIsDevMode}
         connectionStatus={connectionStatus}
         activeView={activeView}
+        hasReadingPosition={!!readingPosition && !isChapterModalOpen}
+        onResumeReading={resumeReading}
+        readingChapterTitle={selectedChapter?.title}
+        readingPosition={readingPosition}
+        granularChapters={granularChapters}
       />
       
       {/* Main Console Layout */}
@@ -157,6 +197,7 @@ function App() {
           onViewChange={setActiveView}
           onLearningGuideOpen={openLearningGuide}
           onChapterSelect={handleChapterSelect}
+          onChapterSearchOpen={openChapterSearch}
           isDevMode={isDevMode}
           onDevModeChange={setIsDevMode}
         />
@@ -164,16 +205,7 @@ function App() {
         {/* Main Content Area */}
         <main className="flex-1 overflow-hidden p-3 bg-gradient-to-br from-offWhite to-fadedBlue8">
           <div className="h-full flex flex-col gap-3">
-            {/* Visual Output - Top */}
-            <div className={`transition-all duration-300 ${isVisualOutputCollapsed ? 'h-16' : 'h-96'}`}>
-              <VisualOutput 
-                data={visualData} 
-                isCollapsed={isVisualOutputCollapsed}
-                onToggle={toggleVisualOutput}
-              />
-            </div>
-            
-            {/* KDB Console - Bottom */}
+            {/* KDB Console - Full Height */}
             <div className="flex-1 min-h-0">
               <div className="h-full bg-white rounded-xl border-2 border-offBlack16 shadow-lg overflow-hidden">
                 <div className="h-full">
@@ -181,10 +213,9 @@ function App() {
                     onVisualData={setVisualData}
                     onQuerySet={handleQuerySet}
                     onConnectionChange={setConnectionStatus}
-                    onResumeReading={resumeReading}
-                    hasReadingPosition={!!readingPosition && !isChapterModalOpen}
-                    readingChapterTitle={selectedChapter?.title}
                     activeView={activeView}
+                    onOpenVisualOutput={openVisualOutput}
+                    hasVisualData={!!visualData}
                   />
                 </div>
               </div>
@@ -208,6 +239,13 @@ function App() {
         onApplyQuery={handleApplyQuery}
         onPositionChange={handleReadingPositionChange}
         initialPosition={readingPosition}
+      />
+
+      {/* Visual Output Modal */}
+      <SimpleVisualOutput
+        data={visualData}
+        isOpen={isVisualOutputOpen}
+        onClose={closeVisualOutput}
       />
 
       <Toaster />
