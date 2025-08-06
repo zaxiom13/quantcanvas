@@ -36,8 +36,6 @@ interface NavigationSidebarProps {
   onLearningGuideOpen: () => void;
   onChapterSelect: (chapter: Chapter) => void;
   onChapterSearchOpen: () => void;
-  isDevMode: boolean;
-  onDevModeChange: (isDevMode: boolean) => void;
 }
 
 // Get chapter icons
@@ -88,8 +86,6 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   onViewChange,
   onLearningGuideOpen,
   onChapterSelect,
-  isDevMode,
-  onDevModeChange
 }) => {
   const [isQForMortalsExpanded, setIsQForMortalsExpanded] = useState(false);
   return (
@@ -201,7 +197,7 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
           
           {/* Bottom section - Settings */}
           <div className="p-2 border-t border-offBlack16">
-            <SettingsDialog isDevMode={isDevMode} onDevModeChange={onDevModeChange}>
+            <SettingsDialog>
               <Button
                 variant="ghost"
                 className={`w-full justify-start hover:bg-fadedBlue8 text-offBlack ${
@@ -217,4 +213,4 @@ export const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
       </CardContent>
     </Card>
   );
-}; 
+};

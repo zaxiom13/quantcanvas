@@ -84,11 +84,21 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isRegexMode, setIsRegexMode] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Lock scroll on body when modal is open
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     const loadGranularChapters = async () => {
@@ -110,7 +120,6 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
     if (isOpen && chapter && granularChapters.length > 0) {
       // Clear search when opening a new chapter
       setSearchTerm('');
-      setIsRegexMode(false);
       setShowSearchResults(false);
       setIsSearchVisible(false);
       
@@ -202,7 +211,6 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
       if (e.key === 'Escape' && isSearchVisible) {
         e.preventDefault();
         setSearchTerm('');
-        setIsRegexMode(false);
         setShowSearchResults(false);
         setIsSearchVisible(false);
       }
@@ -239,16 +247,9 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
     }> = [];
     
     try {
-      let searchRegex: RegExp;
-      
-      if (isRegexMode) {
-        // Try to create regex from search term
-        searchRegex = new RegExp(searchTerm, 'gi');
-      } else {
-        // Escape special regex characters for literal search
-        const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        searchRegex = new RegExp(escapedTerm, 'gi');
-      }
+      // Escape special regex characters for literal search
+      const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(escapedTerm, 'gi');
       
       // Search in main chapter content if no subsections
       if (allSubsections.length === 0) {
@@ -304,7 +305,7 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
     }
     
     return results;
-  }, [chapter, granularChapters, searchTerm, isRegexMode]);
+  }, [chapter, granularChapters, searchTerm]);
 
   const toggleSection = (sectionId: string) => {
     const newExpanded = new Set(expandedSections);
@@ -392,20 +393,48 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
             </div>
             <div className="flex items-center space-x-2">
               {hasSubsections && (
-                <Button
-                  variant={isSearchVisible ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => {
-                    setIsSearchVisible(!isSearchVisible);
-                    if (!isSearchVisible) {
-                      setTimeout(() => searchInputRef.current?.focus(), 100);
-                    }
-                  }}
-                  className="text-offBlack hover:bg-fadedBlue16"
-                  title="Search within chapter (Ctrl+F)"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
+                <div className={`relative flex items-center rounded-md overflow-hidden transition-all duration-300 ease-in-out
+                  ${isSearchVisible 
+                    ? 'bg-gradient-to-r from-blue/5 to-blue/10 ring-1 ring-blue/30 shadow-sm' 
+                    : 'bg-white/80 hover:bg-white ring-1 ring-offBlack/10 hover:ring-offBlack/20'}`}>
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="Search within chapter..."
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setShowSearchResults(e.target.value.trim().length > 0);
+                    }}
+                    className={`pr-3 h-9 border-0 focus:ring-0 focus:outline-none placeholder:text-offBlack/40
+                      transition-all duration-300 ease-in-out backdrop-blur-sm text-base
+                      ${isSearchVisible 
+                        ? 'w-64 opacity-100 bg-transparent pl-4' 
+                        : 'w-0 opacity-0 bg-transparent pl-0'}`}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsSearchVisible(!isSearchVisible);
+                      if (!isSearchVisible) {
+                        setTimeout(() => searchInputRef.current?.focus(), 100);
+                      } else {
+                        setSearchTerm('');
+                        setShowSearchResults(false);
+                      }
+                    }}
+                    className={`flex items-center space-x-1.5 px-3 py-2 transition-all duration-200
+                      ${isSearchVisible 
+                        ? 'text-blue hover:bg-blue/20' 
+                        : 'text-offBlack/70 hover:bg-offBlack/10'}`}
+                    title="Toggle Search"
+                  >
+                    <Search className={`h-4 w-4 transition-colors ${isSearchVisible ? 'text-blue' : 'text-offBlack/70'}`} />
+                    <span className={`text-sm font-medium transition-colors ${isSearchVisible ? 'text-blue' : 'text-offBlack/70'}`}>
+                      {isSearchVisible ? 'Close' : 'Search'}
+                    </span>
+                  </Button>
+                </div>
               )}
               <Button
                 variant="ghost"
@@ -417,69 +446,6 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
               </Button>
             </div>
           </div>
-          
-          {/* Search Controls */}
-          {hasSubsections && isSearchVisible && (
-            <div className="space-y-3 border-t border-offBlack16 pt-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-offBlack/50" />
-                <Input
-                  ref={searchInputRef}
-                  placeholder="Search within this chapter..."
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setShowSearchResults(e.target.value.trim().length > 0);
-                  }}
-                  className="pl-10 bg-white border-offBlack16 focus:ring-blue focus:border-blue"
-                />
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Hash className="h-4 w-4 text-offBlack/70" />
-                  <Button
-                    variant={isRegexMode ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => setIsRegexMode(!isRegexMode)}
-                    className="text-xs"
-                  >
-                    {isRegexMode ? "Regex ON" : "Regex OFF"}
-                  </Button>
-                </div>
-                
-                <div className="flex items-center space-x-2">
-                  {searchTerm && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearchTerm('');
-                        setIsRegexMode(false);
-                        setShowSearchResults(false);
-                      }}
-                      className="text-offBlack/70 hover:text-offBlack"
-                    >
-                      Clear
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setSearchTerm('');
-                      setIsRegexMode(false);
-                      setShowSearchResults(false);
-                      setIsSearchVisible(false);
-                    }}
-                    className="text-offBlack/70 hover:text-offBlack"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
         </CardHeader>
 
         <div className="flex-1 flex overflow-hidden">
@@ -498,7 +464,7 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                                <Search className="h-8 w-8 text-offBlack/30 mx-auto mb-4" />
                                <p className="text-offBlack/70 mb-2">No matches found</p>
                                <p className="text-sm text-offBlack/50">
-                                 {isRegexMode ? "Try a different regex pattern" : "Try different search terms"}
+                                 Try different search terms
                                </p>
                                <Button
                                  variant="outline"

@@ -25,8 +25,12 @@ interface GranularChapter {
 }
 
 function App() {
-  const [isDevMode, setIsDevMode] = useState(false);
+const isDevMode = true;
   const [visualData, setVisualData] = useState<any>(null);
+  const [isMouseMode, setIsMouseMode] = useState(false);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [query, setQuery] = useState('');
+  const [lastQuery, setLastQuery] = useState('');
   
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -120,10 +124,23 @@ function App() {
 
   const closeVisualOutput = () => {
     setIsVisualOutputOpen(false);
+    // End any active modes when closing the visual output
+    if (isMouseMode) setIsMouseMode(false);
+    if (isLiveMode) setIsLiveMode(false);
   };
 
   const handleQuerySet = (setQueryFn: (query: string) => void) => {
     setQueryRef.current = setQueryFn;
+  };
+
+  const toggleMouseMode = () => {
+    if (isLiveMode) setIsLiveMode(false);
+    setIsMouseMode(!isMouseMode);
+  };
+
+  const toggleLiveMode = () => {
+    if (isMouseMode) setIsMouseMode(false);
+    setIsLiveMode(!isLiveMode);
   };
 
   const handleApplyQuery = (query: string) => {
@@ -175,9 +192,8 @@ function App() {
   return (
     <div className="h-screen bg-offWhite text-offBlack flex flex-col overflow-hidden">
       {/* Enhanced Header */}
-      <Header 
+<Header 
         isDevMode={isDevMode} 
-        onDevModeChange={setIsDevMode}
         connectionStatus={connectionStatus}
         activeView={activeView}
         hasReadingPosition={!!readingPosition && !isChapterModalOpen}
@@ -198,8 +214,6 @@ function App() {
           onLearningGuideOpen={openLearningGuide}
           onChapterSelect={handleChapterSelect}
           onChapterSearchOpen={openChapterSearch}
-          isDevMode={isDevMode}
-          onDevModeChange={setIsDevMode}
         />
         
         {/* Main Content Area */}
@@ -216,6 +230,12 @@ function App() {
                     activeView={activeView}
                     onOpenVisualOutput={openVisualOutput}
                     hasVisualData={!!visualData}
+                    onQueryChange={setQuery}
+                    onLastQueryChange={setLastQuery}
+                    isMouseMode={isMouseMode}
+                    isLiveMode={isLiveMode}
+                    onToggleMouseMode={toggleMouseMode}
+                    onToggleLiveMode={toggleLiveMode}
                   />
                 </div>
               </div>
@@ -246,6 +266,12 @@ function App() {
         data={visualData}
         isOpen={isVisualOutputOpen}
         onClose={closeVisualOutput}
+        isMouseMode={isMouseMode}
+        isLiveMode={isLiveMode}
+        onToggleMouseMode={toggleMouseMode}
+        onToggleLiveMode={toggleLiveMode}
+        hasQuery={!!lastQuery}
+        lastQuery={lastQuery}
       />
 
       <Toaster />

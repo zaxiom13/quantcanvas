@@ -18,7 +18,7 @@ interface GranularChapter {
 
 interface HeaderProps {
     isDevMode: boolean;
-    onDevModeChange: (isDevMode: boolean) => void;
+    onDevModeChange?: (isDevMode: boolean) => void;
     connectionStatus: 'connected' | 'disconnected' | 'connecting';
     activeView: string;
     hasReadingPosition?: boolean;
@@ -30,7 +30,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ 
     isDevMode, 
-    onDevModeChange, 
     connectionStatus, 
     activeView,
     hasReadingPosition,
@@ -154,4 +153,4 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
         </header>
     );
-}; 
+};

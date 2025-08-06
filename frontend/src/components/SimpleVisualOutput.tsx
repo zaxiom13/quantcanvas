@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Mouse, Play, Pause } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
@@ -28,6 +28,12 @@ interface SimpleVisualOutputProps {
   data: any;
   isOpen: boolean;
   onClose: () => void;
+  isMouseMode: boolean;
+  isLiveMode: boolean;
+  onToggleMouseMode: () => void;
+  onToggleLiveMode: () => void;
+  hasQuery: boolean;
+  lastQuery?: string;
 }
 
 // Image Canvas Component
@@ -50,7 +56,7 @@ const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
     const canvas = canvasRef.current;
     if (!canvas || !data) return;
 
-    const CANVAS_SIZE = 400;
+    const CANVAS_SIZE = 800; // Increased canvas size for better quality
     canvas.width = CANVAS_SIZE;
     canvas.height = CANVAS_SIZE;
     const ctx = canvas.getContext('2d');
@@ -106,11 +112,11 @@ const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
   }, [data]);
 
   return (
-    <div className="h-full flex justify-center items-center bg-offWhite rounded-lg border-2 border-offBlack16 overflow-hidden">
+    <div className="h-full flex justify-center items-center bg-offWhite overflow-hidden p-1">
       <canvas
         ref={canvasRef}
-        className="max-w-full max-h-full object-contain border border-gray-300"
-        style={{ minWidth: '100px', minHeight: '100px', imageRendering: 'pixelated' }}
+        className="max-w-full max-h-full w-full h-full object-contain"
+        style={{ imageRendering: 'pixelated' }}
       />
     </div>
   );
@@ -267,7 +273,17 @@ const Placeholder = () => (
   </div>
 );
 
-export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({ data, isOpen, onClose }) => {
+export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({ 
+  data, 
+  isOpen, 
+  onClose, 
+  isMouseMode,
+  isLiveMode,
+  onToggleMouseMode,
+  onToggleLiveMode,
+  hasQuery,
+  lastQuery
+}) => {
   // Type guards
   const isGrayscaleMatrix = (arr: any): boolean => {
     return Array.isArray(arr) && arr.length > 0 && 
@@ -353,13 +369,49 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({ data, is
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl h-screen w-screen max-h-screen bg-white border-2 border-offBlack16 shadow-xl">
+      <DialogContent className="max-w-[95vw] h-[95vh] w-[95vw] bg-white border-2 border-offBlack16 shadow-xl p-4">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
-            <BarChart3 className="h-5 w-5 text-blue" />
-            <span className="text-offBlack">Visual Output</span>
+            <div className="flex items-center space-x-2">
+              <BarChart3 className="h-5 w-5 text-blue" />
+              <span className="text-offBlack">Visual Output</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={onToggleMouseMode}
+                variant={isMouseMode ? "secondary" : "outline"}
+                size="sm"
+                className={`text-green-600 hover:text-green-600 ${isMouseMode ? 'bg-green-100' : ''}`}
+                title="Toggle mouse mode (execute on mouse movement)"
+                disabled={!hasQuery}
+              >
+                <Mouse className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={onToggleLiveMode}
+                variant={isLiveMode ? "secondary" : "outline"}
+                size="sm"
+                className="text-orange-600 hover:text-orange-600"
+                title="Toggle live mode (auto re-execute every 0.1s)"
+                disabled={!hasQuery}
+              >
+                {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+            </div>
           </DialogTitle>
         </DialogHeader>
+        
+        {/* Last Query Display */}
+        {lastQuery && (
+          <div className="border-b border-offBlack16 p-3 bg-gradient-to-r from-blue/5 to-offWhite">
+            <div className="flex items-start space-x-2">
+              <span className="text-sm font-semibold text-offBlack/70 mt-1">Last Query:</span>
+              <pre className="bg-offWhite border border-offBlack16 rounded-md p-2 text-xs text-offBlack font-mono whitespace-pre-wrap break-words flex-1 max-h-20 overflow-y-auto">
+                {lastQuery}
+              </pre>
+            </div>
+          </div>
+        )}
         
         {/* View Selection Header - show if we have visualizable data */}
         {(isTableData(data) || isGrayscaleMatrix(data) || isColorMatrix(data) || isNumericArray(data)) && (

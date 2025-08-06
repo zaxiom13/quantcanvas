@@ -35,6 +35,17 @@ interface ResultGroup {
   isExpanded: boolean;
 }
 
+// Live session interface for live/mouse mode
+export interface LiveSession {
+  id: string;
+  mode: 'live' | 'mouse';
+  query: string;
+  startTime: string;
+  endTime?: string;
+  results: any[];
+  isExpanded: boolean;
+}
+
 interface KdbConsoleProps {
   onVisualData?: (data: any) => void;
   onQuerySet?: (setQueryFn: (query: string) => void) => void;
@@ -42,6 +53,13 @@ interface KdbConsoleProps {
   activeView?: string;
   onOpenVisualOutput?: () => void;
   hasVisualData?: boolean;
+  onQueryChange?: (query: string) => void;
+  onLastQueryChange?: (lastQuery: string) => void;
+  onCurrentSessionChange?: (session: LiveSession | null) => void;
+  isMouseMode?: boolean;
+  isLiveMode?: boolean;
+  onToggleMouseMode?: () => void;
+  onToggleLiveMode?: () => void;
 }
 
 export const KdbConsole: React.FC<KdbConsoleProps> = ({ 
@@ -50,7 +68,14 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   onConnectionChange, 
   activeView,
   onOpenVisualOutput,
-  hasVisualData
+  hasVisualData,
+  onQueryChange,
+  onLastQueryChange,
+  onCurrentSessionChange,
+  isMouseMode = false,
+  isLiveMode = false,
+  onToggleMouseMode,
+  onToggleLiveMode
 }) => {
   const kdbClientRef = useRef<KdbWebSocketClient | null>(null);
   const queryInputRef = useRef<HTMLTextAreaElement>(null);
@@ -67,8 +92,6 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   const [isInputFocused, setIsInputFocused] = useState(false);
   
   // Interactive coordinates state
-  const [isMouseMode, setIsMouseMode] = useState(false);
-  const [isLiveMode, setIsLiveMode] = useState(false);
   const [mouseX, setMouseX] = useState(0);
   const [mouseY, setMouseY] = useState(0);
   const [lastQuery, setLastQuery] = useState('');
@@ -80,15 +103,6 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   const lastQueryTimeRef = useRef(0);
   
   // Session management for live/mouse mode
-  interface LiveSession {
-    id: string;
-    mode: 'live' | 'mouse';
-    query: string;
-    startTime: string;
-    endTime?: string;
-    results: any[];
-    isExpanded: boolean;
-  }
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
@@ -161,7 +175,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
       lastMousePosRef.current = { x: newX, y: newY };
       
              // If in mouse mode and mouse has moved, trigger query
-      if (isMouseMode && hasMoved && lastQuery && isConnected && !isLoading) {
+      const queryToUse = lastQuery || query.trim();
+      if (isMouseMode && hasMoved && queryToUse && isConnected && !isLoading) {
+        console.log(`🐭 Mouse conditions met - mode:${isMouseMode}, moved:${hasMoved}, query:"${queryToUse}", connected:${isConnected}, loading:${isLoading}`);
         const now = Date.now();
         // Throttle to max 10 queries per second (100ms minimum interval)
         if (now - lastQueryTimeRef.current > 100) {
@@ -169,9 +185,11 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
           
           if (kdbClientRef.current) {
             const mousePrefix = `mouseX:${newX.toFixed(6)}; mouseY:${newY.toFixed(6)}; `;
-            const fullQuery = mousePrefix + lastQuery;
+            const fullQuery = mousePrefix + queryToUse;
+            console.log(`🐭 Mouse query executing:`, fullQuery);
             
             kdbClientRef.current.query(fullQuery).then(result => {
+              console.log(`📥 Mouse query result received:`, result);
               // Check if the result is actually an error object from KDB+
               const isKdbError = result && typeof result === 'object' && 
                                 (result.error || result.Error || 
@@ -196,6 +214,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                       ? { ...session, results: [...session.results, errorEntry] }
                       : session
                   ));
+                  console.log(`➕ Added error result to session ${currentSessionId}:`, errorEntry);
                 }
               } else {
                 // Handle successful results
@@ -215,6 +234,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                       ? { ...session, results: [...session.results, resultEntry] }
                       : session
                   ));
+                  console.log(`➕ Added successful result to session ${currentSessionId}:`, resultEntry);
                 }
                 
                 // Don't update visual data from mouse mode if there are regular query results
@@ -226,12 +246,13 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                 }
               }
             }).catch(error => {
-              console.error('Live mode query failed:', error);
+              console.error('🚨 Mouse mode query failed:', error);
               const errorEntry = { 
                 timestamp: new Date().toLocaleTimeString(),
                 error: error.message,
                 coordinates: { x: newX, y: newY }
               };
+              console.log(`➕ Adding error to session ${currentSessionId}:`, errorEntry);
               
               // Add to live results for current display
               setLiveResults(prev => [...prev, errorEntry]);
@@ -256,18 +277,19 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
     };
-          }, [isMouseMode, lastQuery, isConnected, isLoading, onVisualData, resultGroups.length]);
+          }, [isMouseMode, lastQuery, query, isConnected, isLoading, onVisualData, resultGroups.length]);
 
   // Live mode execution (interval-based)
   useEffect(() => {
-    if (isLiveMode && lastQuery && isConnected && !isLoading) {
+    const queryToUse = lastQuery || query.trim();
+    if (isLiveMode && queryToUse && isConnected && !isLoading) {
       const interval = setInterval(() => {
-        if (kdbClientRef.current && lastQuery) {
+        if (kdbClientRef.current && queryToUse) {
           // Get current mouse coordinates at the time of execution
           const currentMouseX = mouseX;
           const currentMouseY = mouseY;
           const mousePrefix = `mouseX:${currentMouseX.toFixed(6)}; mouseY:${currentMouseY.toFixed(6)}; `;
-          const fullQuery = mousePrefix + lastQuery;
+          const fullQuery = mousePrefix + queryToUse;
           
           kdbClientRef.current.query(fullQuery).then(result => {
             // Check if the result is actually an error object from KDB+
@@ -354,100 +376,79 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         liveIntervalRef.current = null;
       }
     }
-  }, [isLiveMode, lastQuery, isConnected, isLoading, onVisualData, resultGroups.length]); // Removed mouseX, mouseY from dependencies
+  }, [isLiveMode, lastQuery, query, isConnected, isLoading, onVisualData, resultGroups.length]); // Removed mouseX, mouseY from dependencies
 
-  // Toggle mouse mode
-  const toggleMouseMode = useCallback(() => {
-    const newMouseMode = !isMouseMode;
-    setIsMouseMode(newMouseMode);
+
+  // Session creation and management for live/mouse modes
+  const createSession = useCallback((mode: 'live' | 'mouse', query: string) => {
+    const sessionId = `${mode}-${Date.now()}`;
+    const startTime = new Date().toLocaleTimeString();
     
-    if (isLiveMode) {
-      setIsLiveMode(false); // Turn off live mode when enabling mouse mode
-    }
+    const newSession: LiveSession = {
+      id: sessionId,
+      mode,
+      query,
+      startTime,
+      results: [],
+      isExpanded: true // Start expanded to show activity
+    };
     
-    if (newMouseMode) {
-      // Use current query or fall back to lastQuery
-      const queryToUse = query.trim() || lastQuery;
-      
-      if (queryToUse) {
-        // Starting a new mouse mode session
-        const sessionId = `mouse-${Date.now()}`;
-        const newSession: LiveSession = {
-          id: sessionId,
-          mode: 'mouse',
-          query: queryToUse,
-          startTime: new Date().toLocaleTimeString(),
-          results: [],
-          isExpanded: false
-        };
-        
-        setLiveSessions(prev => [...prev, newSession]);
-        setCurrentSessionId(sessionId);
-        setLastQuery(queryToUse);
-        setLiveResults([]); // Clear current results for new session
-        console.log('Mouse session created:', sessionId, 'Query:', queryToUse);
-      } else {
-        // No query available, revert mouse mode
-        setIsMouseMode(false);
-        console.warn('No query available for mouse mode');
-      }
-    } else if (!newMouseMode && currentSessionId) {
-      // Ending the current session
+    setLiveSessions(prev => [...prev, newSession]);
+    setCurrentSessionId(sessionId);
+    
+    console.log(`🎯 Created new ${mode} session:`, sessionId, 'with query:', query);
+    return sessionId;
+  }, []);
+  
+  const endCurrentSession = useCallback(() => {
+    if (currentSessionId) {
+      const endTime = new Date().toLocaleTimeString();
       setLiveSessions(prev => prev.map(session => 
-        session.id === currentSessionId 
-          ? { ...session, endTime: new Date().toLocaleTimeString() }
+        session.id === currentSessionId
+          ? { ...session, endTime }
           : session
       ));
-      setCurrentSessionId(null);
-    }
-  }, [isLiveMode, isMouseMode, query, currentSessionId, lastQuery]);
-
-  // Toggle live mode
-  const toggleLiveMode = useCallback(() => {
-    const newLiveMode = !isLiveMode;
-    setIsLiveMode(newLiveMode);
-    
-    if (isMouseMode) {
-      setIsMouseMode(false); // Turn off mouse mode when enabling live mode
-    }
-    
-    if (newLiveMode) {
-      // Use current query or fall back to lastQuery
-      const queryToUse = query.trim() || lastQuery;
       
-      if (queryToUse) {
-        // Starting a new live mode session
-        const sessionId = `live-${Date.now()}`;
-        const newSession: LiveSession = {
-          id: sessionId,
-          mode: 'live',
-          query: queryToUse,
-          startTime: new Date().toLocaleTimeString(),
-          results: [],
-          isExpanded: false
-        };
-        
-        setLiveSessions(prev => [...prev, newSession]);
-        setCurrentSessionId(sessionId);
-        setLastQuery(queryToUse);
-        setLiveResults([]); // Clear current results for new session
-        console.log('Live session created:', sessionId, 'Query:', queryToUse);
-      } else {
-        // No query available, revert live mode
-        setIsLiveMode(false);
-        console.warn('No query available for live mode');
-      }
-    } else if (!newLiveMode && currentSessionId) {
-      // Ending the current session
-      setLiveSessions(prev => prev.map(session => 
-        session.id === currentSessionId 
-          ? { ...session, endTime: new Date().toLocaleTimeString() }
-          : session
-      ));
+      // Debug logging to see session state when ending
+      setLiveSessions(prev => {
+        const endingSession = prev.find(s => s.id === currentSessionId);
+        console.log(`🏁 Ended session:`, currentSessionId, `with ${endingSession?.results.length || 0} results`);
+        if (endingSession && endingSession.results.length > 0) {
+          console.log(`🔍 Session results:`, endingSession.results);
+        }
+        return prev;
+      });
+      
       setCurrentSessionId(null);
     }
-  }, [isLiveMode, isMouseMode, query, currentSessionId, lastQuery]);
-
+  }, [currentSessionId]);
+  
+  // Effect to handle mode changes and session creation/ending
+  useEffect(() => {
+    const queryToUse = lastQuery || query.trim();
+    if ((isMouseMode || isLiveMode) && queryToUse && !currentSessionId) {
+      const mode = isMouseMode ? 'mouse' : 'live';
+      createSession(mode, queryToUse);
+    } else if ((!isMouseMode && !isLiveMode) && currentSessionId) {
+      endCurrentSession();
+    }
+  }, [isMouseMode, isLiveMode, lastQuery, query, currentSessionId, createSession, endCurrentSession]);
+  
+  // Notify parent of lastQuery changes
+  useEffect(() => {
+    if (onLastQueryChange) {
+      onLastQueryChange(lastQuery);
+    }
+  }, [lastQuery, onLastQueryChange]);
+  
+  // Notify parent of current session changes
+  useEffect(() => {
+    if (onCurrentSessionChange) {
+      const currentSession = currentSessionId ? liveSessions.find(s => s.id === currentSessionId) || null : null;
+      onCurrentSessionChange(currentSession);
+    }
+  }, [currentSessionId, liveSessions, onCurrentSessionChange]);
+  
   // Clear live results
   const clearLiveResults = useCallback(() => {
     setLiveResults([]);
@@ -457,12 +458,12 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   const clearAllSessions = useCallback(() => {
     // End any active live/mouse mode sessions
     if (currentSessionId) {
-      if (isLiveMode) {
-        setIsLiveMode(false);
+      if (isLiveMode && onToggleLiveMode) {
+        onToggleLiveMode();
         console.log('Live mode ended due to clearing all sessions');
       }
-      if (isMouseMode) {
-        setIsMouseMode(false);
+      if (isMouseMode && onToggleMouseMode) {
+        onToggleMouseMode();
         console.log('Mouse mode ended due to clearing all sessions');
       }
     }
@@ -470,7 +471,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     setLiveSessions([]);
     setLiveResults([]);
     setCurrentSessionId(null);
-  }, [currentSessionId, isLiveMode, isMouseMode]);
+  }, [currentSessionId, isLiveMode, isMouseMode, onToggleLiveMode, onToggleMouseMode]);
   
   // Toggle session expansion
   const toggleSessionExpansion = useCallback((sessionId: string) => {
@@ -486,12 +487,12 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     // Check if we're removing the currently active session
     if (currentSessionId === sessionId) {
       // End the current live/mouse mode session properly
-      if (isLiveMode) {
-        setIsLiveMode(false);
+      if (isLiveMode && onToggleLiveMode) {
+        onToggleLiveMode();
         console.log('Live mode ended due to session deletion:', sessionId);
       }
-      if (isMouseMode) {
-        setIsMouseMode(false);
+      if (isMouseMode && onToggleMouseMode) {
+        onToggleMouseMode();
         console.log('Mouse mode ended due to session deletion:', sessionId);
       }
       
@@ -511,7 +512,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
           : session
       ).filter(session => session.id !== sessionId)
     );
-  }, [currentSessionId, isLiveMode, isMouseMode]);
+  }, [currentSessionId, isLiveMode, isMouseMode, onToggleLiveMode, onToggleMouseMode]);
 
   // Result group management functions
   const toggleResultGroupExpansion = useCallback((groupId: string) => {
@@ -642,6 +643,16 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
           
           kdbClientRef.current = client;
           console.log('✅ WebSocket client created and configured');
+          
+          // Auto-connect on initialization
+          console.log('🔄 Auto-connecting to KDB server...');
+          try {
+            await client.connect();
+            console.log('✅ Auto-connection successful!');
+          } catch (autoConnectError) {
+            console.warn('⚠️ Auto-connection failed, user will need to connect manually:', autoConnectError);
+            // Don't show error toast for auto-connection failures
+          }
         } else {
           console.log('ℹ️ WebSocket client already exists, skipping initialization');
         }
@@ -843,11 +854,11 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   // Comprehensive console clear function that resets everything to initial state
   const clearConsole = useCallback(() => {
     // Stop any active modes first
-    if (isLiveMode) {
-      setIsLiveMode(false);
+    if (isLiveMode && onToggleLiveMode) {
+      onToggleLiveMode();
     }
-    if (isMouseMode) {
-      setIsMouseMode(false);
+    if (isMouseMode && onToggleMouseMode) {
+      onToggleMouseMode();
     }
     
     // Clear intervals
@@ -884,7 +895,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     
     // Focus input after clearing
     setTimeout(() => focusQueryInput(), 100);
-  }, [isLiveMode, isMouseMode, onVisualData, focusQueryInput]);
+  }, [isLiveMode, isMouseMode, onVisualData, focusQueryInput, onToggleLiveMode, onToggleMouseMode]);
 
   // Check if there's anything to clear
   const hasDataToClear = results.length > 0 || 
@@ -1035,7 +1046,10 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   }, [activeView, clearConsole, hasDataToClear, isConnected, resetServer]);
 
   const handleQueryChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setQuery(e.target.value);
+    const newQuery = e.target.value;
+    setQuery(newQuery);
+    // Notify parent of query change
+    onQueryChange?.(newQuery);
     // Reset history navigation when user types
     if (historyIndex !== -1) {
       setHistoryIndex(-1);
@@ -1361,17 +1375,17 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
             <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center space-x-2">
                     Console
-                    {isInputFocused && (
-                        <span className="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full animate-pulse">
-                            Ready
-                        </span>
-                    )}
                     <span 
                         className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full cursor-help"
                         title="These coordinates are available to use in expressions whenever you like"
                     >
                         mouseX:{mouseX.toFixed(3)}, mouseY:{mouseY.toFixed(3)}
                     </span>
+                    {isInputFocused && (
+                        <span className="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full animate-pulse">
+                            Ready
+                        </span>
+                    )}
                     {isMouseMode && (
                         <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
                             Mouse
@@ -1384,36 +1398,12 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                     )}
                 </CardTitle>
                 <div className="flex items-center space-x-2">
-                    {/* Mouse Mode Control */}
-                    <Button
-                        onClick={toggleMouseMode}
-                        variant={isMouseMode ? "secondary" : "outline"}
-                        size="sm"
-                        className={`text-green-600 hover:text-green-600 ${isMouseMode ? 'bg-green-100' : ''}`}
-                        title="Toggle mouse mode (execute on mouse movement)"
-                        disabled={!(query.trim() || lastQuery)}
-                    >
-                        <Mouse className="h-4 w-4" />
-                    </Button>
-                    
-                    {/* Live Mode Control */}
-                    <Button
-                        onClick={toggleLiveMode}
-                        variant={isLiveMode ? "secondary" : "outline"}
-                        size="sm"
-                        className="text-orange-600 hover:text-orange-600"
-                        title="Toggle live mode (auto re-execute every 0.1s)"
-                        disabled={!(query.trim() || lastQuery)}
-                    >
-                        {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                    </Button>
-                    
-
-                    
                     {/* Visual Output Button */}
                     {onOpenVisualOutput && hasVisualData && (
                         <Button
-                            onClick={onOpenVisualOutput}
+                            onClick={() => {
+                              onOpenVisualOutput();
+                            }}
                             variant="secondary"
                             size="sm"
                             className="text-blue hover:text-blue hover:bg-fadedBlue16"
@@ -1745,17 +1735,6 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                       >
                           <Trash2 className="h-3 w-3 mr-1" />
                           Clear Console
-                      </Button>
-                      <Button 
-                          onClick={resetServer} 
-                          variant="outline" 
-                          size="sm" 
-                          disabled={!isConnected || isLoading}
-                          title={isConnected ? "Reset KDB server - delete all variables, tables, and state (Ctrl+Shift+R)" : "Not connected to server"}
-                          className="border-orange-500 text-orange-600 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-600"
-                      >
-                          <RotateCcw className="h-3 w-3 mr-1" />
-                          Reset Server
                       </Button>
                       {isConnected ? (
                           <Button onClick={handleDisconnect} variant="secondary" size="sm">Disconnect</Button>
