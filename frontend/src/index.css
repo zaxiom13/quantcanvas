@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap');
+/* Fonts are now loaded via <link> tags in index.html to avoid render-blocking @import */
 
 @tailwind base;
 @tailwind components;
@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    font-family: Lato, "Noto Sans", sans-serif;
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", Ubuntu, Cantarell, 'Helvetica Neue', Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
     line-height: 1.5;
     font-weight: 400;
     color-scheme: light;
@@ -19,9 +19,31 @@
 
   body {
     margin: 0;
-    font-family: Lato, "Noto Sans", sans-serif;
-    background-color: #f7f8fa;
-    color: #21242c;
+    background-color: #0b0f10;
+    color: #e5eef2;
+    font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans", Ubuntu, Cantarell, 'Helvetica Neue', Arial;
+    background-image:
+      radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+      linear-gradient(rgba(0,0,0,0.35), rgba(0,0,0,0.35));
+    background-size: 3px 3px, 100% 100%;
+    background-position: 0 0, 0 0;
+  }
+
+  /* Subtle CRT scanlines */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.03),
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 2px,
+      transparent 3px
+    );
+    mix-blend-mode: soft-light;
+    z-index: 0;
   }
 
   /* Custom scrollbar styling for console feel */
@@ -73,18 +95,18 @@
     to { opacity: 1; }
   }
 
-  /* Enhanced card styling */
+  /* Enhanced card styling (dark CRT) */
   .console-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
-    border: 2px solid rgba(33, 36, 44, 0.16);
+    background: linear-gradient(135deg, #0f1416 0%, #0b0f10 100%);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6) inset;
     transition: all 0.3s ease;
   }
 
   .console-card:hover {
-    border-color: #1865f2;
-    box-shadow: 0 8px 24px rgba(24, 101, 242, 0.15);
+    border-color: rgba(57, 255, 20, 0.45);
+    box-shadow: 0 0 24px rgba(57, 255, 20, 0.08), 0 8px 24px rgba(0, 0, 0, 0.5);
     transform: translateY(-2px);
   }
 
@@ -120,29 +142,29 @@
 
 @layer utilities {
   .bg-offWhite { background-color: #f7f8fa; }
-  .bg-offBlack { background-color: #21242c; }
-  .text-offBlack { color: #21242c; }
-  .text-offWhite { color: #f7f8fa; }
+  .bg-offBlack { background-color: #0b0f10; }
+  .text-offBlack { color: #e5eef2; }
+  .text-offWhite { color: #0b0f10; }
   .text-blue { color: #1865f2; }
-  .text-green { color: #00a60e; }
+  .text-green { color: #39ff14; }
   .text-gold { color: #ffb100; }
   .text-red { color: #d92916; }
   .text-purple { color: #9059ff; }
   .bg-blue { background-color: #1865f2; }
-  .bg-green { background-color: #00a60e; }
+  .bg-green { background-color: #39ff14; }
   .bg-gold { background-color: #ffb100; }
   .bg-red { background-color: #d92916; }
   .bg-purple { background-color: #9059ff; }
-  .bg-fadedBlue8 { background-color: #f4f7fe; }
-  .bg-fadedBlue16 { background-color: #e8f1fe; }
-  .bg-fadedGreen8 { background-color: #f2fef3; }
-  .bg-fadedGold8 { background-color: #fefcf2; }
-  .bg-fadedPurple8 { background-color: #f7f4ff; }
-  .border-offBlack16 { border-color: rgba(33, 36, 44, 0.16); }
+  .bg-fadedBlue8 { background-color: rgba(24, 101, 242, 0.09); }
+  .bg-fadedBlue16 { background-color: rgba(24, 101, 242, 0.16); }
+  .bg-fadedGreen8 { background-color: rgba(57, 255, 20, 0.08); }
+  .bg-fadedGold8 { background-color: rgba(255, 177, 0, 0.08); }
+  .bg-fadedPurple8 { background-color: rgba(144, 89, 255, 0.08); }
+  .border-offBlack16 { border-color: rgba(255, 255, 255, 0.09); }
   .border-blue { border-color: #1865f2; }
-  .hover\:bg-fadedBlue16:hover { background-color: #e8f1fe; }
-  .hover\:bg-fadedGreen16:hover { background-color: #e6fde8; }
-  .hover\:bg-fadedBlue8:hover { background-color: #f4f7fe; }
+  .hover\:bg-fadedBlue16:hover { background-color: rgba(24, 101, 242, 0.18); }
+  .hover\:bg-fadedGreen16:hover { background-color: rgba(57, 255, 20, 0.16); }
+  .hover\:bg-fadedBlue8:hover { background-color: rgba(24, 101, 242, 0.1); }
   
   /* Console-specific utilities */
   .console-grid {
@@ -154,10 +176,10 @@
   }
   
   .console-panel {
-    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
-    border: 2px solid rgba(33, 36, 44, 0.16);
+    background: linear-gradient(135deg, #0f1416 0%, #0b0f10 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     transition: all 0.3s ease;
   }
@@ -168,8 +190,8 @@
   }
   
   .console-header {
-    background: linear-gradient(90deg, #ffffff 0%, #f4f7fe 100%);
-    border-bottom: 2px solid rgba(33, 36, 44, 0.16);
+    background: linear-gradient(90deg, rgba(255,255,255,0.02) 0%, rgba(24,101,242,0.08) 100%);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     padding: 1rem 1.5rem;
   }
   
@@ -197,29 +219,51 @@
   
   /* Chapter content styling */
   .chapter-content pre {
-    background-color: #f8f9fa;
-    border: 1px solid #e9ecef;
+    background-color: #0f1416;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
-    padding: 1rem;
+    padding: 0.75rem;
     overflow-x: auto;
-    margin: 1rem 0;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 0.875rem;
-    line-height: 1.5;
+    margin: 0.75rem 0;
+    font-family: 'IBM Plex Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: #e5eef2;
   }
   
   .chapter-content code {
-    background-color: #f8f9fa;
-    padding: 0.125rem 0.25rem;
+    background-color: rgba(255,255,255,0.06);
+    padding: 0.1rem 0.25rem;
     border-radius: 4px;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 0.875rem;
+    font-family: 'IBM Plex Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.8125rem;
   }
   
   .chapter-content pre code {
     background-color: transparent;
     padding: 0;
     border-radius: 0;
+  }
+
+  /* Make subsection content fit tighter in right dock */
+  .subsection-content p {
+    margin-top: 0.4rem;
+    margin-bottom: 0.4rem;
+  }
+  .subsection-content h2,
+  .subsection-content h3,
+  .subsection-content h4 {
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .subsection-content ul,
+  .subsection-content ol {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-left: 1.1rem;
+  }
+  .subsection-content pre code {
+    font-size: 0.8rem;
   }
 
 

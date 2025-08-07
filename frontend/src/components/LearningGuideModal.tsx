@@ -44,15 +44,15 @@ export const LearningGuideModal: React.FC<LearningGuideModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] bg-white border-2 border-offBlack16 rounded-lg shadow-lg p-0 flex flex-col">
-        <DialogHeader className="flex items-center justify-between border-b border-offBlack16 p-6 pb-4 flex-shrink-0">
+      <DialogContent className="max-w-4xl max-h-[90vh] bg-[#0f1416] border border-white/10 rounded-md shadow-crt p-0 flex flex-col text-[#e5eef2]">
+        <DialogHeader className="flex items-center justify-between border-b border-white/10 p-6 pb-4 flex-shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue/10 rounded-lg">
-              <BookOpen className="h-5 w-5 text-blue" />
+            <div className="p-2 bg-white/10 rounded-md border border-white/10">
+              <BookOpen className="h-5 w-5 text-neon-500" />
             </div>
             <div>
-              <DialogTitle className="text-xl font-bold text-offBlack">Basics</DialogTitle>
-              <p className="text-sm text-offBlack/70">KDB+ Reference & Examples</p>
+              <DialogTitle className="text-xl font-bold text-[#e5eef2]">Basics</DialogTitle>
+              <p className="text-sm text-[#e5eef2]/70">KDB+ Reference & Examples</p>
             </div>
           </div>
         </DialogHeader>
@@ -60,17 +60,17 @@ export const LearningGuideModal: React.FC<LearningGuideModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6 min-h-0">
           {kdbExamples.map((section, sectionIndex) => (
             <div key={section.category} className="space-y-4">
-              <div className="flex items-center space-x-2 pb-2 border-b-2 border-offBlack16">
-                <Terminal className="h-5 w-5 text-blue" />
-                <h3 className="text-lg font-bold text-blue">{section.category}</h3>
+              <div className="flex items-center space-x-2 pb-2 border-b border-white/10">
+                <Terminal className="h-5 w-5 text-neon-500" />
+                <h3 className="text-lg font-bold text-neon-500">{section.category}</h3>
               </div>
               
               <div className="grid gap-4">
                 {section.items.map((item, itemIndex) => (
-                  <Card key={`${sectionIndex}-${itemIndex}`} className="border border-offBlack16 hover:border-blue/30 transition-colors">
+                  <Card key={`${sectionIndex}-${itemIndex}`} className="border border-white/10 hover:border-neon-500/40 transition-colors">
                     <CardContent className="p-4">
-                      <p className="text-sm text-offBlack mb-3 leading-relaxed">{item.doc}</p>
-                      <div className="bg-offBlack text-offWhite p-3 rounded-lg font-mono text-sm mb-3 overflow-x-auto">
+                      <p className="text-sm text-[#e5eef2] mb-3 leading-relaxed">{item.doc}</p>
+                      <div className="bg-[#0b0f10] text-[#e5eef2] p-3 rounded-md font-mono text-sm mb-3 overflow-x-auto border border-white/10">
                         {item.q}
                       </div>
                       <div className="flex items-center space-x-2">
@@ -78,7 +78,7 @@ export const LearningGuideModal: React.FC<LearningGuideModalProps> = ({
                           size="sm"
                           variant="secondary"
                           onClick={() => handleQueryClick(item.q)}
-                          className="text-blue hover:text-blue hover:bg-fadedBlue16"
+                          className="hover:border-neon-500/40 hover:bg-white/5"
                         >
                           <Play className="h-4 w-4 mr-1" />
                           Apply Query
@@ -87,7 +87,7 @@ export const LearningGuideModal: React.FC<LearningGuideModalProps> = ({
                           size="sm"
                           variant="outline"
                           onClick={() => copyToClipboard(item.q)}
-                          className="text-offBlack hover:text-offBlack hover:bg-fadedBlue8"
+                          className="hover:border-neon-500/40 hover:bg-white/5"
                         >
                           <Copy className="h-4 w-4 mr-1" />
                           Copy

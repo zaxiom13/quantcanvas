@@ -18,7 +18,7 @@ const QCodeBlock: React.FC<QCodeBlockProps> = ({ blockId, codeElement, onApplyAn
     return (
         <div id={blockId} className="code-block-with-buttons mb-4">
             <pre {...props} dangerouslySetInnerHTML={{ __html: codeElement.innerHTML }} />
-            <div className="flex flex-wrap gap-2 mt-2 p-2 bg-fadedBlue8 rounded-b-lg border-t border-offBlack16">
+            <div className="flex flex-wrap gap-2 mt-2 p-2 bg-white/5 rounded-b-lg border-t border-white/10">
                 {qCommands.map((qCommand: string, index: number) => {
                     const code = qCommand.substring(qCommand.indexOf('q)') + 2).trim();
                     if (code) {
@@ -26,9 +26,9 @@ const QCodeBlock: React.FC<QCodeBlockProps> = ({ blockId, codeElement, onApplyAn
                             <Button
                                 key={index}
                                 size="sm"
-                                variant="secondary"
+                                variant="outline"
                                 onClick={() => onApplyAndClose(code, blockId)}
-                                className="text-blue hover:text-blue hover:bg-fadedBlue16"
+                                className="text-[#e5eef2] hover:bg-white/10 hover:text-[#e5eef2] border-white/20"
                             >
                                 <Play className="h-4 w-4 mr-1" />
                                 Apply: {code.length > 20 ? code.substring(0, 20) + '...' : code}
@@ -86,6 +86,9 @@ const domNodeToReact = (
         const codeElement = elementNode.querySelector('code') || elementNode;
         const text = codeElement.textContent || '';
         const hasQCommands = text.split('\n').some((line: string) => line.trim().startsWith('q)'));
+
+        const defaultPreClasses = 'rounded-md border border-white/10 bg-black/40 text-[#e5eef2] p-3 overflow-x-auto';
+        props.className = props.className ? `${props.className} ${defaultPreClasses}` : defaultPreClasses;
 
         if (hasQCommands) {
             const blockId = `${idPrefix}-q-block-${qBlockCounter.count++}`;

@@ -23,7 +23,7 @@ interface ReferenceCardProps {
   onClose: () => void;
 }
 
-export const ReferenceCard: React.FC<ReferenceCardProps> = ({ 
+export const ReferenceCard: React.FC<ReferenceCardProps> = React.memo(({ 
   isOpen, 
   onClose 
 }) => {
@@ -63,36 +63,36 @@ export const ReferenceCard: React.FC<ReferenceCardProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] bg-white border-2 border-offBlack16 rounded-lg shadow-lg p-0 flex flex-col">
-        <DialogHeader className="flex items-center justify-between border-b border-offBlack16 p-6 pb-4 flex-shrink-0">
+      <DialogContent className="max-w-6xl max-h-[90vh] bg-[#0f1416] border border-white/10 rounded-md shadow-crt p-0 flex flex-col text-[#e5eef2]">
+        <DialogHeader className="flex items-center justify-between border-b border-white/10 p-6 pb-4 flex-shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-blue/10 rounded-lg">
-              <BookOpen className="h-5 w-5 text-blue" />
+            <div className="p-2 bg-white/10 rounded-md border border-white/10">
+              <BookOpen className="h-5 w-5 text-neon-500" />
             </div>
             <div>
-              <DialogTitle className="text-xl font-bold text-offBlack">Q/KDB+ Reference Card</DialogTitle>
-              <p className="text-sm text-offBlack/70">Quick reference for q language elements</p>
+              <DialogTitle className="text-xl font-bold text-[#e5eef2]">Q/KDB+ Basics</DialogTitle>
+              <p className="text-sm text-[#e5eef2]/70">Executable q examples and quick reference</p>
             </div>
           </div>
         </DialogHeader>
 
         {/* Search and Filter Bar */}
-        <div className="flex-shrink-0 p-6 pb-4 border-b border-offBlack16 bg-fadedBlue8/50">
+        <div className="flex-shrink-0 p-6 pb-4 border-b border-white/10 bg-white/5">
           <div className="flex items-center space-x-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-offBlack/50" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-[#e5eef2]/50" />
               <Input
-                placeholder="Search functions, operators, or descriptions..."
+                placeholder="Search q examples or descriptions..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-10 bg-white border-offBlack16 focus:ring-blue focus:border-blue"
+                className="pl-10 pr-10 bg-[#0b0f10] border-white/10 text-[#e5eef2] placeholder:text-[#e5eef2]/50"
               />
               {searchTerm && (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-offBlack/10"
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-white/5"
                 >
                   <X className="h-3 w-3" />
                 </Button>
@@ -100,11 +100,11 @@ export const ReferenceCard: React.FC<ReferenceCardProps> = ({
             </div>
             
             <div className="flex items-center space-x-2">
-              <Filter className="h-4 w-4 text-offBlack/70" />
+              <Filter className="h-4 w-4 text-[#e5eef2]/70" />
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-2 bg-white border border-offBlack16 rounded-lg text-sm focus:ring-blue focus:border-blue"
+                className="px-3 py-2 bg-[#0b0f10] border border-white/10 rounded-md text-sm text-[#e5eef2] focus:outline-none"
               >
                 {categories.map(category => (
                   <option key={category} value={category}>
@@ -119,7 +119,7 @@ export const ReferenceCard: React.FC<ReferenceCardProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={clearSearch}
-                className="text-offBlack hover:text-offBlack hover:bg-fadedBlue8"
+                className="hover:border-neon-500/40 hover:bg-white/5"
               >
                 Clear
               </Button>
@@ -131,37 +131,37 @@ export const ReferenceCard: React.FC<ReferenceCardProps> = ({
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
           {filteredData.length === 0 ? (
             <div className="text-center py-12">
-              <div className="text-offBlack/50 text-lg mb-2">No results found</div>
-              <div className="text-offBlack/40 text-sm">Try adjusting your search terms or category filter</div>
+              <div className="text-[#e5eef2]/60 text-lg mb-2">No results found</div>
+              <div className="text-[#e5eef2]/50 text-sm">Try adjusting your search terms or category filter</div>
             </div>
           ) : (
             <div className="space-y-6">
               {filteredData.map((section, sectionIndex) => (
                 <div key={section.category} className="space-y-4">
-                  <div className="flex items-center space-x-2 pb-2 border-b-2 border-offBlack16">
-                    <h3 className="text-lg font-bold text-blue">{section.category}</h3>
-                    <span className="text-xs text-offBlack/50 bg-offBlack/5 px-2 py-1 rounded">
+                  <div className="flex items-center space-x-2 pb-2 border-b border-white/10">
+                    <h3 className="text-sm font-semibold text-neon-500">{section.category}</h3>
+                    <span className="text-[11px] text-[#e5eef2]/60 bg-white/5 px-2 py-1 rounded border border-white/10">
                       {section.items.length} items
                     </span>
                   </div>
                   
                   <div className="grid gap-3">
                     {section.items.map((item, itemIndex) => (
-                      <Card key={`${sectionIndex}-${itemIndex}`} className="border border-offBlack16 hover:border-blue/30 transition-colors">
+                      <Card key={`${sectionIndex}-${itemIndex}`} className="border border-white/10 hover:border-neon-500/40 transition-colors">
                         <CardContent className="p-4">
                           <div className="flex items-start space-x-4">
                             <div className="flex-shrink-0">
-                              <div className="bg-offBlack text-offWhite px-3 py-1 rounded font-mono text-sm font-medium">
+                              <div className="bg-[#0b0f10] text-[#e5eef2] px-3 py-1 rounded-md font-mono text-sm font-medium border border-white/10">
                                 {item.q.split(' ')[0]}
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="bg-offBlack/5 rounded-lg p-3 mb-2">
-                                <code className="text-sm font-mono text-offBlack whitespace-pre-wrap break-all">
+                              <div className="bg-[#0b0f10] rounded-md p-3 mb-2 border border-white/10">
+                                <code className="text-sm font-mono text-[#e5eef2] whitespace-pre-wrap break-all">
                                   {item.q}
                                 </code>
                               </div>
-                              <p className="text-sm text-offBlack/80 leading-relaxed">{item.doc}</p>
+                              <p className="text-sm text-[#e5eef2]/80 leading-relaxed">{item.doc}</p>
                             </div>
                           </div>
                         </CardContent>
@@ -175,8 +175,8 @@ export const ReferenceCard: React.FC<ReferenceCardProps> = ({
         </div>
 
         {/* Footer with stats */}
-        <div className="flex-shrink-0 px-6 py-3 border-t border-offBlack16 bg-fadedBlue8/30">
-          <div className="flex items-center justify-between text-xs text-offBlack/70">
+        <div className="flex-shrink-0 px-6 py-3 border-t border-white/10 bg-white/5">
+          <div className="flex items-center justify-between text-xs text-[#e5eef2]/70">
             <div>
               Showing {filteredData.reduce((acc, section) => acc + section.items.length, 0)} of {' '}
               {referenceData.reduce((acc, section) => acc + section.items.length, 0)} items
@@ -189,4 +189,4 @@ export const ReferenceCard: React.FC<ReferenceCardProps> = ({
       </DialogContent>
     </Dialog>
   );
-}; 
+});

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, Clock, BookOpen } from 'lucide-react';
+import { ChevronRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ReadingPosition, Chapter } from '@/lib/saveState';
 
@@ -28,16 +28,7 @@ interface HeaderProps {
     granularChapters?: GranularChapter[];
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-    isDevMode, 
-    connectionStatus, 
-    activeView,
-    hasReadingPosition,
-    onResumeReading,
-    readingChapterTitle,
-    readingPosition,
-    granularChapters
-}) => {
+export const Header: React.FC<HeaderProps> = ({ activeView }) => {
     const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
     useEffect(() => {
@@ -63,86 +54,32 @@ export const Header: React.FC<HeaderProps> = ({
         return viewNames[view] || view;
     };
 
-    // Helper function to format the resume button text with chapter and subsection details
-    const getResumeText = (): string => {
-        if (!readingPosition || !granularChapters) {
-            return `Resume: ${readingChapterTitle || 'Reading'}`;
-        }
-
-        // Find the active subsection if it exists
-        if (readingPosition.activeSection) {
-            const activeSubsection = granularChapters.find(
-                ch => ch.id === readingPosition.activeSection && ch.granularType === 'subsection'
-            );
-
-            if (activeSubsection) {
-                // Format as "Chapter Title > Subsection Title"
-                const chapterPart = readingChapterTitle || 'Chapter';
-                const subsectionPart = activeSubsection.title || activeSubsection.fullTitle;
-                
-                // Truncate if too long for better UI
-                const maxLength = 60;
-                const combinedText = `${chapterPart} > ${subsectionPart}`;
-                
-                if (combinedText.length > maxLength) {
-                    // Try to truncate the subsection part while keeping the chapter
-                    const availableForSubsection = maxLength - chapterPart.length - 3; // 3 for " > "
-                    if (availableForSubsection > 10) {
-                        return `${chapterPart} > ${subsectionPart.substring(0, availableForSubsection - 3)}...`;
-                    } else {
-                        // If chapter title is too long, truncate everything
-                        return combinedText.substring(0, maxLength - 3) + '...';
-                    }
-                }
-                
-                return combinedText;
-            }
-        }
-
-        // Fallback to just chapter title
-        return `Resume: ${readingChapterTitle || 'Reading'}`;
-    };
-
     return (
-        <header className="h-16 flex items-center justify-between px-6 border-b-2 border-offBlack16 bg-gradient-to-r from-white to-fadedBlue8 shadow-sm flex-shrink-0">
+        <header className="h-14 flex items-center justify-between px-6 border-b border-white/10 bg-gradient-to-r from-[#0f1416] to-[#0b0f10] shadow-crt flex-shrink-0">
             {/* Left side - Logo and Navigation */}
             <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-blue rounded-lg flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">Q</span>
+                <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 rounded-sm bg-[#132b3a] border border-white/10 shadow-[0_0_10px_rgba(57,255,20,0.15)] flex items-center justify-center">
+                        <span className="text-green font-bold text-sm">Q</span>
                     </div>
-                    <h1 className="text-xl font-bold text-offBlack">
+                    <h1 className="text-lg font-extrabold tracking-tight text-[#e5eef2]">
                         QuantCanvas
                     </h1>
                 </div>
                 
                 {/* Breadcrumb navigation */}
-                <div className="flex items-center space-x-2 text-offBlack/70">
+                <div className="flex items-center space-x-2 text-[#e5eef2]/70">
                     <span className="text-sm">Console</span>
                     <ChevronRight className="h-4 w-4" />
-                    <span className="text-sm font-medium text-offBlack">
+                    <span className="text-sm font-semibold text-[#e5eef2]">
                         {getViewDisplayName(activeView)}
                     </span>
                 </div>
             </div>
             
-            {/* Right side - Resume, Time and shortcuts */}
-            <div className="flex items-center space-x-4 text-offBlack">
-                {/* Resume Reading Button */}
-                {hasReadingPosition && onResumeReading && (
-                    <Button
-                        onClick={onResumeReading}
-                        variant="secondary"
-                        size="sm"
-                        className="text-blue hover:text-blue hover:bg-fadedBlue16 max-w-xs"
-                        title={getResumeText()} // Full text in tooltip
-                    >
-                        <BookOpen className="h-4 w-4 mr-2 flex-shrink-0" />
-                        <span className="truncate">{getResumeText()}</span>
-                    </Button>
-                )}
-                
-                <div className="flex items-center space-x-2 text-offBlack/60">
+            {/* Right side - Time and shortcuts */}
+            <div className="flex items-center space-x-4 text-[#e5eef2]">
+                <div className="flex items-center space-x-2 text-[#e5eef2]/60">
                     <span className="text-xs">Ctrl+L</span>
                     <span className="text-xs">Focus Query</span>
                 </div>

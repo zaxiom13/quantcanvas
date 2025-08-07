@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { BarChart3, Mouse, Play, Pause } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
@@ -177,7 +177,7 @@ const ChartView = ({ data }: { data: number[] }) => {
   };
 
   return (
-    <div className="h-full p-4 bg-offWhite rounded-lg border-2 border-offBlack16">
+    <div className="h-full p-4 bg-[#0b0f10] rounded-md border border-white/10">
       <div className="h-full">
         <Bar data={chartData} options={options} />
       </div>
@@ -207,8 +207,8 @@ const TextView = ({ data }: { data: any }) => {
   };
 
   return (
-    <div className="h-full p-4 overflow-auto bg-offWhite rounded-lg border-2 border-offBlack16">
-      <pre className="text-sm font-mono text-offBlack whitespace-pre-wrap break-words">
+    <div className="h-full p-4 overflow-auto bg-[#0b0f10] rounded-md border border-white/10">
+      <pre className="text-sm font-mono text-[#e5eef2] whitespace-pre-wrap break-words">
         {formatData(data)}
       </pre>
     </div>
@@ -224,14 +224,14 @@ const TableView = ({ data, columns }: { data: any[], columns: any[] }) => {
   });
 
   return (
-    <div className="w-full h-full overflow-auto bg-white rounded-lg border-2 border-offBlack16 shadow-sm">
+    <div className="w-full h-full overflow-auto bg-[#0b0f10] rounded-md border border-white/10 shadow-crt">
       <div className="h-full overflow-auto">
-        <table className="w-full text-left border-collapse">
-          <thead className="sticky top-0 bg-fadedBlue8">
+        <table className="w-full text-left border-collapse text-[#e5eef2]">
+          <thead className="sticky top-0 bg-white/5">
             {table.getHeaderGroups().map((headerGroup: any) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header: any) => (
-                  <th key={header.id} className="p-3 border-b-2 border-offBlack16 font-bold text-offBlack">
+                  <th key={header.id} className="p-3 border-b border-white/10 font-bold">
                     {flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 ))}
@@ -240,9 +240,9 @@ const TableView = ({ data, columns }: { data: any[], columns: any[] }) => {
           </thead>
           <tbody>
             {table.getRowModel().rows.map((row: any, index: number) => (
-              <tr key={row.id} className={`hover:bg-fadedBlue8 ${index % 2 === 0 ? 'bg-white' : 'bg-offWhite'}`}>
+              <tr key={row.id} className={`hover:bg-white/5 ${index % 2 === 0 ? 'bg-transparent' : 'bg-white/5'}`}>
                 {row.getVisibleCells().map((cell: any) => (
-                  <td key={cell.id} className="p-3 border-b border-offBlack16 text-offBlack">
+                  <td key={cell.id} className="p-3 border-b border-white/10">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -352,11 +352,11 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
   if (!data) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl h-screen w-screen max-h-screen bg-white border-2 border-offBlack16 shadow-xl">
+        <DialogContent className="max-w-4xl h-screen w-screen max-h-screen bg-[#0f1416] border border-white/10 shadow-crt text-[#e5eef2]">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
-              <BarChart3 className="h-5 w-5 text-blue" />
-              <span className="text-offBlack">Visual Output</span>
+              <BarChart3 className="h-5 w-5 text-neon-500" />
+              <span className="text-[#e5eef2]">Visual Output</span>
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-hidden">
@@ -369,44 +369,23 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[95vw] h-[95vh] w-[95vw] bg-white border-2 border-offBlack16 shadow-xl p-4">
+      <DialogContent className="max-w-[95vw] h-[95vh] w-[95vw] bg-[#0f1416] border border-white/10 shadow-crt p-4 text-[#e5eef2]">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <div className="flex items-center space-x-2">
-              <BarChart3 className="h-5 w-5 text-blue" />
-              <span className="text-offBlack">Visual Output</span>
+              <BarChart3 className="h-5 w-5 text-neon-500" />
+              <span className="text-[#e5eef2]">Visual Output</span>
             </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                onClick={onToggleMouseMode}
-                variant={isMouseMode ? "secondary" : "outline"}
-                size="sm"
-                className={`text-green-600 hover:text-green-600 ${isMouseMode ? 'bg-green-100' : ''}`}
-                title="Toggle mouse mode (execute on mouse movement)"
-                disabled={!hasQuery}
-              >
-                <Mouse className="h-4 w-4" />
-              </Button>
-              <Button
-                onClick={onToggleLiveMode}
-                variant={isLiveMode ? "secondary" : "outline"}
-                size="sm"
-                className="text-orange-600 hover:text-orange-600"
-                title="Toggle live mode (auto re-execute every 0.1s)"
-                disabled={!hasQuery}
-              >
-                {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-              </Button>
-            </div>
+            {/* Mouse and Live buttons removed - now only available in Visual Output Panel in right dock */}
           </DialogTitle>
         </DialogHeader>
         
         {/* Last Query Display */}
         {lastQuery && (
-          <div className="border-b border-offBlack16 p-3 bg-gradient-to-r from-blue/5 to-offWhite">
+          <div className="border-b border-white/10 p-3 bg-gradient-to-r from-white/5 to-transparent">
             <div className="flex items-start space-x-2">
-              <span className="text-sm font-semibold text-offBlack/70 mt-1">Last Query:</span>
-              <pre className="bg-offWhite border border-offBlack16 rounded-md p-2 text-xs text-offBlack font-mono whitespace-pre-wrap break-words flex-1 max-h-20 overflow-y-auto">
+              <span className="text-sm font-semibold text-[#e5eef2]/80 mt-1">Last Query:</span>
+              <pre className="bg-[#0b0f10] border border-white/10 rounded-md p-2 text-xs text-[#e5eef2] font-mono whitespace-pre-wrap break-words flex-1 max-h-20 overflow-y-auto">
                 {lastQuery}
               </pre>
             </div>
@@ -415,13 +394,13 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
         
         {/* View Selection Header - show if we have visualizable data */}
         {(isTableData(data) || isGrayscaleMatrix(data) || isColorMatrix(data) || isNumericArray(data)) && (
-          <div className="flex items-center space-x-2 p-3 border-b border-offBlack16 bg-gradient-to-r from-fadedBlue8 to-offWhite">
+          <div className="flex items-center space-x-2 p-3 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent">
             {isTableData(data) && (
               <Button 
                 onClick={() => {/* switching not needed for now */}} 
                 variant={currentView === 'table' ? 'default' : 'outline'} 
                 size="sm"
-                className={currentView === 'table' ? 'bg-blue text-white hover:bg-blue/90' : 'text-offBlack border-offBlack/30 hover:bg-fadedBlue16'}
+                className={currentView === 'table' ? '' : ''}
               >
                 Table
               </Button>
@@ -430,7 +409,7 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
               <Button 
                 variant={currentView === 'image' ? 'default' : 'outline'} 
                 size="sm"
-                className={currentView === 'image' ? 'bg-blue text-white hover:bg-blue/90' : 'text-offBlack border-offBlack/30 hover:bg-fadedBlue16'}
+                className={currentView === 'image' ? '' : ''}
               >
                 Image
               </Button>
@@ -439,7 +418,7 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
               <Button 
                 variant={currentView === 'chart' ? 'default' : 'outline'} 
                 size="sm"
-                className={currentView === 'chart' ? 'bg-blue text-white hover:bg-blue/90' : 'text-offBlack border-offBlack/30 hover:bg-fadedBlue16'}
+                className={currentView === 'chart' ? '' : ''}
               >
                 Chart
               </Button>
@@ -448,7 +427,7 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
               <Button 
                 variant={currentView === 'text' ? 'default' : 'outline'} 
                 size="sm"
-                className={currentView === 'text' ? 'bg-blue text-white hover:bg-blue/90' : 'text-offBlack border-offBlack/30 hover:bg-fadedBlue16'}
+                className={currentView === 'text' ? '' : ''}
               >
                 Text
               </Button>

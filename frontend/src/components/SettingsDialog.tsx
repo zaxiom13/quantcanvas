@@ -5,6 +5,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { DevControls } from '@/components/DevControls';
 import { Settings } from 'lucide-react';
 import { ReactNode } from 'react';
@@ -18,21 +19,18 @@ export function SettingsDialog({ children }: SettingsDialogProps) {
     <Dialog>
       <DialogTrigger asChild>
         {children || (
-          <button
-            className="bg-blue text-white rounded-lg p-3 hover:bg-blue/90 transition-colors focus:outline-none focus:ring-2 focus:ring-blue focus:ring-offset-2"
-            aria-label="Settings"
-          >
-            <Settings className="h-5 w-5" />
-          </button>
+          <Button variant="outline" size="sm" aria-label="Settings" className="px-3">
+            <Settings className="h-4 w-4" />
+          </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-md bg-white border border-gray-300 rounded-xl shadow-xl">
+      <DialogContent className="max-w-md bg-[#0f1416] border border-white/10 rounded-xl shadow-[0_20px_60px_-20px_rgba(0,0,0,0.5)] text-[#e5eef2]">
         <DialogHeader className="pb-4">
-          <DialogTitle className="text-2xl font-semibold text-gray-900">Settings</DialogTitle>
+          <DialogTitle className="text-xl font-semibold text-[#e5eef2]">Settings</DialogTitle>
         </DialogHeader>
         
         <div className="space-y-6">
-          <div className="border-t border-gray-200 pt-4">
+          <div className="border-t border-white/10 pt-4">
             <DevControls />
           </div>
         </div>

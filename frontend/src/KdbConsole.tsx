@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 // @ts-ignore - No TS types for text-table
 import table from 'text-table';
 import { KdbWebSocketClient } from './kdb';
@@ -8,7 +8,7 @@ import { ResetKdbServer } from '../wailsjs/go/main/App';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse, X, BarChart3, RotateCcw } from 'lucide-react';
+import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse, X, RotateCcw } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -51,7 +51,6 @@ interface KdbConsoleProps {
   onQuerySet?: (setQueryFn: (query: string) => void) => void;
   onConnectionChange?: (status: 'connected' | 'disconnected' | 'connecting') => void;
   activeView?: string;
-  onOpenVisualOutput?: () => void;
   hasVisualData?: boolean;
   onQueryChange?: (query: string) => void;
   onLastQueryChange?: (lastQuery: string) => void;
@@ -60,6 +59,7 @@ interface KdbConsoleProps {
   isLiveMode?: boolean;
   onToggleMouseMode?: () => void;
   onToggleLiveMode?: () => void;
+  onProvideExecutor?: (executeFn: (query: string) => void) => void;
 }
 
 export const KdbConsole: React.FC<KdbConsoleProps> = ({ 
@@ -67,7 +67,6 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   onQuerySet, 
   onConnectionChange, 
   activeView,
-  onOpenVisualOutput,
   hasVisualData,
   onQueryChange,
   onLastQueryChange,
@@ -75,7 +74,8 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   isMouseMode = false,
   isLiveMode = false,
   onToggleMouseMode,
-  onToggleLiveMode
+  onToggleLiveMode,
+  onProvideExecutor
 }) => {
   const kdbClientRef = useRef<KdbWebSocketClient | null>(null);
   const queryInputRef = useRef<HTMLTextAreaElement>(null);
@@ -90,6 +90,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   const resultsRef = useRef<HTMLDivElement | null>(null);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [isConsoleHovered, setIsConsoleHovered] = useState(false);
   
   // Interactive coordinates state
   const [mouseX, setMouseX] = useState(0);
@@ -105,6 +106,39 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   // Session management for live/mouse mode
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Combined entries for render (memoized and capped to reduce DOM work)
+  const combinedEntries = useMemo(() => {
+    const all = [
+      ...resultGroups.map((group) => ({
+        type: 'resultGroup' as const,
+        data: group,
+        timestamp: group.queryTimestamp,
+        key: group.id
+      })),
+      ...results.map((result, index) => ({
+        type: 'result' as const,
+        data: result,
+        timestamp: result.timestamp,
+        key: `result-${index}`
+      })),
+      ...liveSessions.map((session) => ({
+        type: 'session' as const,
+        data: session,
+        timestamp: session.startTime,
+        key: session.id
+      }))
+    ];
+    const parseTime = (timeStr: string) => {
+      const parts = timeStr.split(':').map(Number);
+      if (parts.length < 2) return 0;
+      const [hours, minutes, seconds = 0] = parts;
+      return hours * 3600 + minutes * 60 + seconds;
+    };
+    const sorted = all.sort((a, b) => parseTime(a.timestamp) - parseTime(b.timestamp));
+    const MAX_ENTRIES = 300;
+    return sorted.length > MAX_ENTRIES ? sorted.slice(sorted.length - MAX_ENTRIES) : sorted;
+  }, [resultGroups, results, liveSessions]);
 
   // Focus the query input
   const focusQueryInput = useCallback(() => {
@@ -123,6 +157,146 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
       });
     }
   }, [onQuerySet, focusQueryInput]);
+
+  // Define executeQuery function early so it can be used in useEffect
+  const executeQuery = useCallback(async () => {
+    if (!query.trim() || !kdbClientRef.current) {
+      console.log('⚠️ Query execution skipped - empty query or no client');
+      return;
+    }
+
+    console.log('🚀 Starting query execution...');
+    console.log('📝 Original query:', query.trim());
+    
+    setIsLoading(true);
+    
+    // Always prepend mouse coordinates to queries
+    const mousePrefix = `mouseX:${mouseX.toFixed(6)}; mouseY:${mouseY.toFixed(6)}; `;
+    const finalQuery = mousePrefix + query.trim();
+    setLastQuery(query.trim()); // Store the original query for live mode
+    
+    console.log('🎯 Final query with coordinates:', finalQuery);
+    console.log('🕐 Query execution started at:', new Date().toISOString());
+    
+    // Create a new result group for this query
+    const groupId = `query-${Date.now()}`;
+    const queryTimestamp = new Date().toLocaleTimeString();
+    
+    const newGroup: ResultGroup = {
+      id: groupId,
+      query: query.trim(),
+      queryTimestamp,
+      isExpanded: false // Start collapsed for cleaner interface
+    };
+    
+    console.log('📊 Created result group:', groupId);
+    setResultGroups(prev => [...prev, newGroup]);
+
+    // Add to history if it's not already the last item
+    setQueryHistory(prev => {
+      if (prev.length === 0 || prev[prev.length - 1] !== query.trim()) {
+        console.log('📚 Added to query history:', query.trim());
+        return [...prev, query.trim()];
+      }
+      return prev;
+    });
+
+    try {
+      console.log('📤 Sending query to KDB server...');
+      const result = await kdbClientRef.current.query(finalQuery);
+      const responseTimestamp = new Date().toLocaleTimeString();
+      
+      console.log('📨 Raw query result received:', result);
+      console.log('📨 Result type:', typeof result);
+      console.log('📨 Result received at:', responseTimestamp);
+      
+      // Check if the result is actually an error object from KDB+
+      const isKdbError = result && typeof result === 'object' && 
+                        (result.error || result.Error || 
+                         (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
+      
+      if (isKdbError) {
+        // Treat KDB+ error objects as errors
+        const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
+        console.error('❌ Query returned KDB+ error:', {
+          fullResult: result,
+          extractedError: errorMessage,
+          originalQuery: query.trim(),
+          finalQuery: finalQuery
+        });
+        setResultGroups(prev => prev.map(group => 
+          group.id === groupId 
+            ? { ...group, error: `KDB+ Error: ${errorMessage}`, errorTimestamp: responseTimestamp }
+            : group
+        ));
+      } else {
+        // Update the result group with the successful response
+        console.log('✅ Query executed successfully');
+        console.log('✅ Success result details:', {
+          resultType: typeof result,
+          isArray: Array.isArray(result),
+          arrayLength: Array.isArray(result) ? result.length : 'N/A',
+          resultPreview: typeof result === 'object' ? JSON.stringify(result).substring(0, 200) + '...' : String(result).substring(0, 200),
+          originalQuery: query.trim()
+        });
+        
+        setResultGroups(prev => prev.map(group => 
+          group.id === groupId 
+            ? { ...group, response: result, responseTimestamp }
+            : group
+        ));
+        
+        // Forward the last query result to visual output, but exclude plain text, single values, and null/invalid data
+        if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
+            result !== null && result !== undefined && 
+            !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined)))) {
+          console.log('📊 Forwarding result to visual output');
+          onVisualData(result);
+        } else {
+          console.log('🚫 Not forwarding to visual output - result is simple value or null/empty');
+        }
+      }
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorTimestamp = new Date().toLocaleTimeString();
+        
+        console.error('❌ Query execution exception:', {
+          error,
+          message: errorMessage,
+          stack: error instanceof Error ? error.stack : 'No stack trace',
+          originalQuery: query.trim(),
+          finalQuery: finalQuery
+        });
+        
+        // Update the result group with the error
+        setResultGroups(prev => prev.map(group => 
+          group.id === groupId 
+            ? { ...group, error: `Query failed: ${errorMessage}`, errorTimestamp }
+            : group
+        ));
+    } finally {
+      setIsLoading(false);
+      setQuery('');
+      setHistoryIndex(-1);
+      setTempQuery('');
+      console.log('🏁 Query execution finished, input cleared and focused');
+      // Focus the input after query execution
+      setTimeout(() => focusQueryInput(), 100);
+    }
+  }, [query, onVisualData, focusQueryInput, mouseX, mouseY]);
+
+  // Provide external executor to run queries from outside (e.g., Right Dock examples)
+  useEffect(() => {
+    if (onProvideExecutor) {
+      onProvideExecutor((externalQuery: string) => {
+        setQuery(externalQuery);
+        // Execute after state updates in next tick
+        setTimeout(() => {
+          executeQuery();
+        }, 0);
+      });
+    }
+  }, [onProvideExecutor, executeQuery]);
 
   // Focus input when component mounts and is connected
   useEffect(() => {
@@ -153,117 +327,88 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     }
   }, [activeView, isConnected, isLoading, focusQueryInput]);
 
-  // Always track mouse coordinates
+  // Optimized mouse coordinate tracking (throttled and conditional)
+  const mouseXRef = useRef(0);
+  const mouseYRef = useRef(0);
+  const lastStateUpdateRef = useRef(0);
+
   useEffect(() => {
+    const isTrackingActive = isMouseMode || isLiveMode || isInputFocused || isConsoleHovered;
+    if (!isTrackingActive) {
+      return;
+    }
+
     const handleMouseMove = (e: MouseEvent) => {
-      // Normalize based on entire window
       const normalizedX = e.clientX / window.innerWidth;
       const normalizedY = e.clientY / window.innerHeight;
-      
       const newX = Math.max(0, Math.min(1, normalizedX));
       const newY = Math.max(0, Math.min(1, normalizedY));
-      
-      setMouseX(newX);
-      setMouseY(newY);
-      
-      // Check if mouse has moved significantly (more than 0.01 in either direction)
+
+      // Store latest coordinates in refs
+      mouseXRef.current = newX;
+      mouseYRef.current = newY;
+
+      // Only update React state at most every 100ms to avoid re-render thrash
+      const now = Date.now();
+      if (now - lastStateUpdateRef.current > 100) {
+        lastStateUpdateRef.current = now;
+        setMouseX(newX);
+        setMouseY(newY);
+      }
+
+      // If in mouse mode, run throttled queries when movement is significant
       const deltaX = Math.abs(newX - lastMousePosRef.current.x);
       const deltaY = Math.abs(newY - lastMousePosRef.current.y);
       const hasMoved = deltaX > 0.01 || deltaY > 0.01;
-      
-      // Update last position
       lastMousePosRef.current = { x: newX, y: newY };
-      
-             // If in mouse mode and mouse has moved, trigger query
-      const queryToUse = lastQuery || query.trim();
+
+      const queryToUse = (lastQuery || query.trim());
       if (isMouseMode && hasMoved && queryToUse && isConnected && !isLoading) {
-        console.log(`🐭 Mouse conditions met - mode:${isMouseMode}, moved:${hasMoved}, query:"${queryToUse}", connected:${isConnected}, loading:${isLoading}`);
-        const now = Date.now();
-        // Throttle to max 10 queries per second (100ms minimum interval)
-        if (now - lastQueryTimeRef.current > 100) {
-          lastQueryTimeRef.current = now;
-          
+        const nowTick = Date.now();
+        if (nowTick - lastQueryTimeRef.current > 100) {
+          lastQueryTimeRef.current = nowTick;
           if (kdbClientRef.current) {
             const mousePrefix = `mouseX:${newX.toFixed(6)}; mouseY:${newY.toFixed(6)}; `;
             const fullQuery = mousePrefix + queryToUse;
-            console.log(`🐭 Mouse query executing:`, fullQuery);
-            
             kdbClientRef.current.query(fullQuery).then(result => {
-              console.log(`📥 Mouse query result received:`, result);
-              // Check if the result is actually an error object from KDB+
-              const isKdbError = result && typeof result === 'object' && 
-                                (result.error || result.Error || 
-                                 (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
-              
+              const isKdbError = result && typeof result === 'object' &&
+                (result.error || result.Error || (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
               if (isKdbError) {
-                // Handle KDB+ error objects
                 const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
-                const errorEntry = { 
+                const errorEntry = {
                   timestamp: new Date().toLocaleTimeString(),
                   error: `KDB+ Error: ${errorMessage}`,
                   coordinates: { x: newX, y: newY }
                 };
-                
-                // Add to live results for current display
                 setLiveResults(prev => [...prev, errorEntry]);
-                
-                // Add to current session
                 if (currentSessionId) {
-                  setLiveSessions(prev => prev.map(session => 
-                    session.id === currentSessionId 
-                      ? { ...session, results: [...session.results, errorEntry] }
-                      : session
-                  ));
-                  console.log(`➕ Added error result to session ${currentSessionId}:`, errorEntry);
+                  setLiveSessions(prev => prev.map(session => session.id === currentSessionId ? { ...session, results: [...session.results, errorEntry] } : session));
                 }
               } else {
-                // Handle successful results
-                const resultEntry = { 
+                const resultEntry = {
                   timestamp: new Date().toLocaleTimeString(),
                   result,
                   coordinates: { x: newX, y: newY }
                 };
-                
-                // Add to live results for current display
                 setLiveResults(prev => [...prev, resultEntry]);
-                
-                // Add to current session
                 if (currentSessionId) {
-                  setLiveSessions(prev => prev.map(session => 
-                    session.id === currentSessionId 
-                      ? { ...session, results: [...session.results, resultEntry] }
-                      : session
-                  ));
-                  console.log(`➕ Added successful result to session ${currentSessionId}:`, resultEntry);
+                  setLiveSessions(prev => prev.map(session => session.id === currentSessionId ? { ...session, results: [...session.results, resultEntry] } : session));
                 }
-                
-                // Don't update visual data from mouse mode if there are regular query results
-                if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
-                    result !== null && result !== undefined && 
-                    !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined))) && 
-                    resultGroups.length === 0) {
+                if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' &&
+                  result !== null && result !== undefined && !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined))) &&
+                  resultGroups.length === 0) {
                   onVisualData(result);
                 }
               }
             }).catch(error => {
-              console.error('🚨 Mouse mode query failed:', error);
-              const errorEntry = { 
+              const errorEntry = {
                 timestamp: new Date().toLocaleTimeString(),
                 error: error.message,
                 coordinates: { x: newX, y: newY }
               };
-              console.log(`➕ Adding error to session ${currentSessionId}:`, errorEntry);
-              
-              // Add to live results for current display
               setLiveResults(prev => [...prev, errorEntry]);
-              
-              // Add to current session
               if (currentSessionId) {
-                setLiveSessions(prev => prev.map(session => 
-                  session.id === currentSessionId 
-                    ? { ...session, results: [...session.results, errorEntry] }
-                    : session
-                ));
+                setLiveSessions(prev => prev.map(session => session.id === currentSessionId ? { ...session, results: [...session.results, errorEntry] } : session));
               }
             });
           }
@@ -271,13 +416,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
       }
     };
 
-    // Add event listener to window for global mouse tracking
     window.addEventListener('mousemove', handleMouseMove);
-    
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-    };
-          }, [isMouseMode, lastQuery, query, isConnected, isLoading, onVisualData, resultGroups.length]);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [isMouseMode, isLiveMode, isInputFocused, isConsoleHovered, isConnected, isLoading, currentSessionId, onVisualData, resultGroups.length, lastQuery, query]);
 
   // Live mode execution (interval-based)
   useEffect(() => {
@@ -376,7 +517,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         liveIntervalRef.current = null;
       }
     }
-  }, [isLiveMode, lastQuery, query, isConnected, isLoading, onVisualData, resultGroups.length]); // Removed mouseX, mouseY from dependencies
+  }, [isLiveMode, lastQuery, query, isConnected, isLoading, onVisualData, resultGroups.length, currentSessionId]); // Removed mouseX, mouseY from dependencies
 
 
   // Session creation and management for live/mouse modes
@@ -718,131 +859,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     setTimeout(() => focusQueryInput(), 100);
   }, [focusQueryInput]);
 
-    const executeQuery = useCallback(async () => {
-    if (!query.trim() || !kdbClientRef.current) {
-      console.log('⚠️ Query execution skipped - empty query or no client');
-      return;
-    }
 
-    console.log('🚀 Starting query execution...');
-    console.log('📝 Original query:', query.trim());
-    
-    setIsLoading(true);
-    
-    // Always prepend mouse coordinates to queries
-    const mousePrefix = `mouseX:${mouseX.toFixed(6)}; mouseY:${mouseY.toFixed(6)}; `;
-    const finalQuery = mousePrefix + query.trim();
-    setLastQuery(query.trim()); // Store the original query for live mode
-    
-    console.log('🎯 Final query with coordinates:', finalQuery);
-    console.log('🕐 Query execution started at:', new Date().toISOString());
-    
-    // Create a new result group for this query
-    const groupId = `query-${Date.now()}`;
-    const queryTimestamp = new Date().toLocaleTimeString();
-    
-    const newGroup: ResultGroup = {
-      id: groupId,
-      query: query.trim(),
-      queryTimestamp,
-      isExpanded: false // Start collapsed for cleaner interface
-    };
-    
-    console.log('📊 Created result group:', groupId);
-    setResultGroups(prev => [...prev, newGroup]);
-
-    // Add to history if it's not already the last item
-    setQueryHistory(prev => {
-      if (prev.length === 0 || prev[prev.length - 1] !== query.trim()) {
-        console.log('📚 Added to query history:', query.trim());
-        return [...prev, query.trim()];
-      }
-      return prev;
-    });
-
-    try {
-      console.log('📤 Sending query to KDB server...');
-      const result = await kdbClientRef.current.query(finalQuery);
-      const responseTimestamp = new Date().toLocaleTimeString();
-      
-      console.log('📨 Raw query result received:', result);
-      console.log('📨 Result type:', typeof result);
-      console.log('📨 Result received at:', responseTimestamp);
-      
-      // Check if the result is actually an error object from KDB+
-      const isKdbError = result && typeof result === 'object' && 
-                        (result.error || result.Error || 
-                         (result.msg && (result.error === 'ExecutionError' || result.Error === 'ExecutionError')));
-      
-      if (isKdbError) {
-        // Treat KDB+ error objects as errors
-        const errorMessage = result.msg || result.message || result.error || result.Error || 'Unknown KDB+ error';
-        console.error('❌ Query returned KDB+ error:', {
-          fullResult: result,
-          extractedError: errorMessage,
-          originalQuery: query.trim(),
-          finalQuery: finalQuery
-        });
-        setResultGroups(prev => prev.map(group => 
-          group.id === groupId 
-            ? { ...group, error: `KDB+ Error: ${errorMessage}`, errorTimestamp: responseTimestamp }
-            : group
-        ));
-      } else {
-        // Update the result group with the successful response
-        console.log('✅ Query executed successfully');
-        console.log('✅ Success result details:', {
-          resultType: typeof result,
-          isArray: Array.isArray(result),
-          arrayLength: Array.isArray(result) ? result.length : 'N/A',
-          resultPreview: typeof result === 'object' ? JSON.stringify(result).substring(0, 200) + '...' : String(result).substring(0, 200),
-          originalQuery: query.trim()
-        });
-        
-        setResultGroups(prev => prev.map(group => 
-          group.id === groupId 
-            ? { ...group, response: result, responseTimestamp }
-            : group
-        ));
-        
-        // Forward the last query result to visual output, but exclude plain text, single values, and null/invalid data
-        if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
-            result !== null && result !== undefined && 
-            !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined)))) {
-          console.log('📊 Forwarding result to visual output');
-          onVisualData(result);
-        } else {
-          console.log('🚫 Not forwarding to visual output - result is simple value or null/empty');
-        }
-      }
-    } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorTimestamp = new Date().toLocaleTimeString();
-        
-        console.error('❌ Query execution exception:', {
-          error,
-          message: errorMessage,
-          stack: error instanceof Error ? error.stack : 'No stack trace',
-          originalQuery: query.trim(),
-          finalQuery: finalQuery
-        });
-        
-        // Update the result group with the error
-        setResultGroups(prev => prev.map(group => 
-          group.id === groupId 
-            ? { ...group, error: `Query failed: ${errorMessage}`, errorTimestamp }
-            : group
-        ));
-    } finally {
-      setIsLoading(false);
-      setQuery('');
-      setHistoryIndex(-1);
-      setTempQuery('');
-      console.log('🏁 Query execution finished, input cleared and focused');
-      // Focus the input after query execution
-      setTimeout(() => focusQueryInput(), 100);
-    }
-  }, [query, onVisualData, focusQueryInput, mouseX, mouseY]);
 
   const clearResults = () => {
     setResults([]);
@@ -1386,81 +1403,23 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                             Ready
                         </span>
                     )}
-                    {isMouseMode && (
-                        <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
-                            Mouse
-                        </span>
-                    )}
-                    {isLiveMode && (
-                        <span className="text-xs text-orange-600 bg-orange-100 px-2 py-1 rounded-full animate-pulse">
-                            Live
-                        </span>
-                    )}
+                    {/* Mouse and Live status indicators removed - now only available in Visual Output Panel */}
                 </CardTitle>
                 <div className="flex items-center space-x-2">
-                    {/* Visual Output Button */}
-                    {onOpenVisualOutput && hasVisualData && (
-                        <Button
-                            onClick={() => {
-                              onOpenVisualOutput();
-                            }}
-                            variant="secondary"
-                            size="sm"
-                            className="text-blue hover:text-blue hover:bg-fadedBlue16"
-                            title="Open Visual Output"
-                        >
-                            <BarChart3 className="h-4 w-4 mr-2" />
-                            Visual Output
-                        </Button>
-                    )}
+                    {/* Visual output button removed - now only available in right dock */}
                 </div>
             </div>
         </CardHeader>
         <CardContent className="flex-1 p-0 flex flex-col min-h-0">
             <div 
                 ref={consoleContainerRef}
-                className="h-full w-full flex flex-col bg-offBlack text-white rounded-lg shadow-inner overflow-hidden" 
+                className="h-full w-full flex flex-col bg-[#0b0f10] text-[#39ff14] rounded-md shadow-inner overflow-hidden" 
                 onClick={handleConsoleClick}
+                onMouseEnter={() => setIsConsoleHovered(true)}
+                onMouseLeave={() => setIsConsoleHovered(false)}
             >
               <div ref={resultsRef} className="flex-1 p-4 overflow-y-auto font-mono text-sm space-y-4 console-results">
-                  {(() => {
-                      // Create combined array of result groups, results, and sessions, sorted by timestamp
-                      const combinedEntries = [
-                          // Result groups
-                          ...resultGroups.map((group) => ({
-                              type: 'resultGroup' as const,
-                              data: group,
-                              timestamp: group.queryTimestamp,
-                              key: group.id
-                          })),
-                          // Regular results (keeping for backwards compatibility)
-                          ...results.map((result, index) => ({
-                              type: 'result' as const,
-                              data: result,
-                              timestamp: result.timestamp,
-                              key: `result-${index}`
-                          })),
-                          // Session entries
-                          ...liveSessions.map((session) => ({
-                              type: 'session' as const,
-                              data: session,
-                              timestamp: session.startTime,
-                              key: session.id
-                          }))
-                      ].sort((a, b) => {
-                          // Sort by timestamp (oldest first, newest at bottom)
-                          // Convert time strings like "10:30:15" to comparable format
-                          const parseTime = (timeStr: string) => {
-                              const [hours, minutes, seconds] = timeStr.split(':').map(Number);
-                              return hours * 3600 + minutes * 60 + seconds;
-                          };
-                          
-                          const timeA = parseTime(a.timestamp);
-                          const timeB = parseTime(b.timestamp);
-                          return timeA - timeB;
-                      });
-
-                      return combinedEntries.map((entry) => {
+                  {combinedEntries.map((entry) => {
                           if (entry.type === 'result') {
                               const result = entry.data;
                               return (
@@ -1481,22 +1440,22 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                               // Query/Response group
                               const group = entry.data as ResultGroup;
                               return (
-                                  <div key={entry.key} className="border border-offBlack/20 rounded-lg p-3 bg-offBlack/5">
+                                  <div key={entry.key} className="border border-white/10 rounded-md p-3 bg-white/5">
                                       <div 
                                           className="flex items-center justify-between cursor-pointer hover:bg-offBlack/10 rounded p-2 -m-2"
                                           onClick={() => toggleResultGroupExpansion(group.id)}
                                       >
                                           <div className="flex-1">
                                               <div className="flex items-center space-x-2">
-                                                  <span className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                  <span className="px-2 py-1 rounded text-[10px] font-semibold bg-white/10 text-neon-500 border border-neon-500/40">
                                                       QUERY
                                                   </span>
-                                                  <span className="text-offBlack/70 text-sm">
+                                                  <span className="text-[#e5eef2]/70 text-sm">
                                                       {group.queryTimestamp}
                                                   </span>
                                                   <span className={`text-xs font-medium ${
-                                                      group.error ? 'text-red-600 bg-red-50 px-2 py-1 rounded' : 
-                                                      group.response !== undefined ? 'text-green-600 bg-green-50 px-2 py-1 rounded' : 'text-yellow-600 bg-yellow-50 px-2 py-1 rounded'
+                                                      group.error ? 'text-red-500 border border-red-500/40 px-2 py-1 rounded' : 
+                                                      group.response !== undefined ? 'text-neon-500 border border-neon-500/40 px-2 py-1 rounded' : 'text-yellow-400 border border-yellow-400/40 px-2 py-1 rounded'
                                                   }`}>
                                                       {group.error ? '⚠️ Error' : 
                                                        group.response !== undefined ? '✅ Success' : '⏳ Pending'}
@@ -1504,14 +1463,14 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                               </div>
                                               
                                               {/* Query Preview */}
-                                              <div className="mt-1 text-xs text-offBlack/70">
-                                                  <strong>Query:</strong> <code className="bg-offBlack/10 px-1 rounded">{group.query}</code>
+                                              <div className="mt-1 text-xs text-[#e5eef2]/70">
+                                                  <strong>Query:</strong> <code className="bg-white/10 px-1 rounded">{group.query}</code>
                                               </div>
                                               
                                               {/* Summary when collapsed */}
                                               {!group.isExpanded && group.response !== undefined && (
-                                                  <div className="mt-2 text-xs text-offBlack/60">
-                                                      <span className="text-green-600">
+                                                  <div className="mt-2 text-xs text-[#e5eef2]/60">
+                                                      <span className="text-neon-500">
                                                           Result: {(() => {
                                                               const response = group.response;
                                                               if (typeof response === 'object') {
@@ -1533,14 +1492,14 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                                               return str.length > 50 ? str.substring(0, 50) + '...' : str;
                                                           })()}
                                                       </span>
-                                                      <div className="text-blue-600 mt-1">Click to expand full result</div>
+                                                      <div className="text-blue-400 mt-1">Click to expand full result</div>
                                                   </div>
                                               )}
                                               
                                               {!group.isExpanded && group.error && (
-                                                  <div className="mt-2 text-xs text-red-600">
+                                                  <div className="mt-2 text-xs text-red-500">
                                                       <span className="font-medium">⚠️ Error:</span> {group.error.substring(0, 80)}{group.error.length > 80 ? '...' : ''}
-                                                      <div className="text-blue-600 mt-1 font-medium">Click to expand full error details</div>
+                                                      <div className="text-blue-400 mt-1 font-medium">Click to expand full error details</div>
                                                   </div>
                                               )}
                                           </div>
@@ -1552,7 +1511,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                                   }}
                                                   variant="ghost"
                                                   size="sm"
-                                                  className="text-red-600 hover:text-red-600 h-6 w-6 p-0"
+                                                  className="text-red-500 hover:text-red-500 h-6 w-6 p-0"
                                                   title="Remove result group"
                                               >
                                                   <X className="h-3 w-3" />
@@ -1563,28 +1522,28 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                       
                                       {/* Expanded Results */}
                                       {group.isExpanded && (
-                                          <div className="mt-3 ml-4 border-l-2 border-offBlack/20 pl-4">
+                                          <div className="mt-3 ml-4 border-l-2 border-white/10 pl-4">
                                               <div className="space-y-3">
                                                   {/* Query */}
                                                   <div className="flex items-start text-sm">
-                                                      <span className="text-offBlack/40 mr-2 select-none text-xs">{group.queryTimestamp}</span>
-                                                      <span className="mr-2 font-bold text-blue">{'>'}</span>
+                                                      <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{group.queryTimestamp}</span>
+                                                      <span className="mr-2 font-bold text-neon-500">{'>'}</span>
                                                       <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{group.query}</pre>
                                                   </div>
                                                   
                                                   {/* Response or Error */}
                                                   {group.response !== undefined && (
                                                       <div className="flex items-start text-sm">
-                                                          <span className="text-offBlack/40 mr-2 select-none text-xs">{group.responseTimestamp}</span>
-                                                          <span className="mr-2 font-bold text-green">{'<'}</span>
+                                                          <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{group.responseTimestamp}</span>
+                                                          <span className="mr-2 font-bold text-neon-500">{'<'}</span>
                                                           <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{formatResult(group.response)}</pre>
                                                       </div>
                                                   )}
                                                   
                                                   {group.error && (
                                                       <div className="flex items-start text-sm">
-                                                          <span className="text-offBlack/40 mr-2 select-none text-xs">{group.errorTimestamp}</span>
-                                                          <span className="mr-2 font-bold text-red">!</span>
+                                                          <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{group.errorTimestamp}</span>
+                                                          <span className="mr-2 font-bold text-red-500">!</span>
                                                           <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{group.error}</pre>
                                                       </div>
                                                   )}
@@ -1597,50 +1556,50 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                               // Live/Mouse session
                               const session = entry.data as LiveSession;
                               return (
-                                  <div key={entry.key} className="border border-offBlack/20 rounded-lg p-3 bg-offBlack/5">
+                                  <div key={entry.key} className="border border-white/10 rounded-md p-3 bg-white/5">
                                       <div 
-                                          className="flex items-center justify-between cursor-pointer hover:bg-offBlack/10 rounded p-2 -m-2"
+                                          className="flex items-center justify-between cursor-pointer hover:bg-white/10 rounded p-2 -m-2"
                                           onClick={() => toggleSessionExpansion(session.id)}
                                       >
                                           <div className="flex-1">
                                               <div className="flex items-center space-x-2">
-                                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                                      session.mode === 'live' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'
+                                                  <span className={`px-2 py-1 rounded text-[10px] font-semibold border ${
+                                                      session.mode === 'live' ? 'border-orange-400/40 text-orange-400' : 'border-neon-500/40 text-neon-500'
                                                   }`}>
                                                       {session.mode === 'live' ? 'LIVE' : 'MOUSE'}
                                                   </span>
-                                                  <span className="text-offBlack/70 text-sm">
+                                                  <span className="text-[#e5eef2]/70 text-sm">
                                                       {session.results.length} results
                                                   </span>
                                                   {session.endTime ? (
-                                                      <span className="text-offBlack/50 text-xs">
+                                                      <span className="text-[#e5eef2]/50 text-xs">
                                                           {session.startTime} - {session.endTime}
                                                       </span>
                                                   ) : (
-                                                      <span className="text-green-600 text-xs animate-pulse">
+                                                      <span className="text-neon-500 text-xs animate-pulse">
                                                           Active
                                                       </span>
                                                   )}
                                                   {session.results.length > 0 && (
-                                                      <span className="text-blue-600 text-xs">
+                                                      <span className="text-blue-400 text-xs">
                                                           Last: {session.results[session.results.length - 1].timestamp}
                                                       </span>
                                                   )}
                                               </div>
                                               
                                               {/* Session Query */}
-                                              <div className="mt-1 text-xs text-offBlack/70">
-                                                  <strong>Query:</strong> <code className="bg-offBlack/10 px-1 rounded">{session.query}</code>
+                                              <div className="mt-1 text-xs text-[#e5eef2]/70">
+                                                  <strong>Query:</strong> <code className="bg-white/10 px-1 rounded">{session.query}</code>
                                               </div>
                                               
                                               {/* Session Summary (when collapsed) */}
                                               {!session.isExpanded && session.results.length > 0 && (
-                                                  <div className="mt-2 text-xs text-offBlack/60">
+                                                  <div className="mt-2 text-xs text-[#e5eef2]/60">
                                                       <div className="flex items-center space-x-4">
                                                           {session.results[session.results.length - 1].error ? (
-                                                              <span className="text-red-600">Last result: Error</span>
+                                                              <span className="text-red-500">Last result: Error</span>
                                                           ) : (
-                                                              <span className="text-green-600">
+                                                              <span className="text-neon-500">
                                                                   Last result: {typeof session.results[session.results.length - 1].result === 'object' ? 
                                                                       (Array.isArray(session.results[session.results.length - 1].result) ? 
                                                                           `Array(${session.results[session.results.length - 1].result.length})` : 
@@ -1650,7 +1609,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                                               </span>
                                                           )}
                                                       </div>
-                                                      <div className="text-blue-600 mt-1">Click to expand {session.results.length} results</div>
+                                                      <div className="text-blue-400 mt-1">Click to expand {session.results.length} results</div>
                                                   </div>
                                               )}
                                           </div>
@@ -1662,7 +1621,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                                   }}
                                                   variant="ghost"
                                                   size="sm"
-                                                  className="text-red-600 hover:text-red-600 h-6 w-6 p-0"
+                                                  className="text-red-500 hover:text-red-500 h-6 w-6 p-0"
                                                   title="Remove session"
                                               >
                                                   <X className="h-3 w-3" />
@@ -1673,18 +1632,18 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                       
                                       {/* Session Results (when expanded) */}
                                       {session.isExpanded && (
-                                          <div className="mt-3 ml-4 border-l-2 border-offBlack/20 pl-4">
+                                          <div className="mt-3 ml-4 border-l-2 border-white/10 pl-4">
                                               <div className="max-h-96 overflow-y-auto">
                                                   {session.results.length > 0 ? (
                                                       <div className="space-y-2">
                                                           {session.results.map((result, resultIndex) => (
                                                               <div key={resultIndex} className="flex items-start text-sm">
-                                                                  <span className="text-offBlack/40 mr-2 select-none text-xs">{result.timestamp}</span>
-                                                                  <span className="text-purple-600 mr-2 font-mono text-xs">
+                                                                  <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{result.timestamp}</span>
+                                                                  <span className="text-purple-400 mr-2 font-mono text-xs">
                                                                       ({result.coordinates.x.toFixed(3)}, {result.coordinates.y.toFixed(3)})
                                                                   </span>
                                                                   <span className={`mr-2 font-bold ${
-                                                                      result.error ? 'text-red' : 'text-green'
+                                                                      result.error ? 'text-red-500' : 'text-neon-500'
                                                                   }`}>
                                                                       {result.error ? '!' : '<'}
                                                                   </span>
@@ -1695,7 +1654,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                                           ))}
                                                       </div>
                                                   ) : (
-                                                      <div className="text-center text-offBlack/50 text-sm py-4">
+                                                      <div className="text-center text-[#e5eef2]/50 text-sm py-4">
                                                           No results yet
                                                       </div>
                                                   )}
@@ -1705,11 +1664,10 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                   </div>
                               );
                           }
-                      });
-                  })()}
+                      })}
               </div>
 
-              <div className={`p-2 border-t border-offBlack16 flex-shrink-0 transition-all duration-200 ${isInputFocused ? 'bg-blue/5' : ''}`}>
+              <div className={`p-2 border-t border-white/10 flex-shrink-0 transition-all duration-200 ${isInputFocused ? 'bg-white/5' : ''}`}>
                   <Textarea
                       ref={queryInputRef}
                       value={query}
@@ -1718,12 +1676,12 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                       onFocus={handleInputFocus}
                       onBlur={handleInputBlur}
                       placeholder={isConnected ? "Enter kdb+ query... (Ctrl+L to focus)" : "Not connected. Click Connect."}
-                      className={`w-full bg-blue/5 border-blue/30 focus:ring-blue focus:border-blue text-offBlack placeholder:text-offBlack/60 resize-none font-mono text-sm transition-all duration-200 ${isInputFocused ? 'shadow-lg shadow-blue/20' : ''}`}
+                      className={`w-full bg-[#0b0f10] border-white/15 focus:ring-neon-500/60 focus:border-neon-500/60 text-[#e5eef2] placeholder:text-[#e5eef2]/60 resize-none font-mono text-sm transition-all duration-200 ${isInputFocused ? 'shadow-[0_0_20px_rgba(57,255,20,0.15)]' : ''}`}
                       disabled={!isConnected || isLoading}
                   />
               </div>
 
-              <div className="px-4 py-2 border-t border-offBlack16 flex items-center justify-between flex-shrink-0">
+              <div className="px-4 py-2 border-t border-white/10 flex items-center justify-between flex-shrink-0">
                   <StatusBar isConnected={isConnected} isLoading={isLoading} />
                   <div className="flex items-center space-x-2">
                       <Button 

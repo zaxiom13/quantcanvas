@@ -369,20 +369,20 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-7xl max-h-[95vh] bg-white border-2 border-offBlack16 shadow-2xl flex flex-col">
-        <CardHeader className="border-b border-offBlack16 bg-gradient-to-r from-fadedBlue8 to-white flex-shrink-0">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-7xl max-h-[95vh] bg-[#0f1416] border border-white/10 shadow-crt flex flex-col text-[#e5eef2]">
+        <CardHeader className="border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-3">
-              <div className="p-2 bg-blue/10 rounded-lg">
-                <BookOpen className="h-5 w-5 text-blue" />
+              <div className="p-2 bg-white/10 rounded-md border border-white/10">
+                <BookOpen className="h-5 w-5 text-neon-500" />
               </div>
               <div>
-                <CardTitle className="text-2xl font-bold text-offBlack">
+                <CardTitle className="text-2xl font-bold text-[#e5eef2]">
                   {chapter.fullTitle}
                 </CardTitle>
                 {hasSubsections && (
-                  <p className="text-sm text-offBlack/70 mt-1">
+                  <p className="text-sm text-[#e5eef2]/70 mt-1">
                     {searchTerm.trim()
                       ? `${searchResults.length} search results in ${subsections.length} sections`
                       : `${subsections.length} subsections available`
@@ -395,8 +395,8 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
               {hasSubsections && (
                 <div className={`relative flex items-center rounded-md overflow-hidden transition-all duration-300 ease-in-out
                   ${isSearchVisible 
-                    ? 'bg-gradient-to-r from-blue/5 to-blue/10 ring-1 ring-blue/30 shadow-sm' 
-                    : 'bg-white/80 hover:bg-white ring-1 ring-offBlack/10 hover:ring-offBlack/20'}`}>
+                    ? 'bg-white/10 ring-1 ring-neon-500/30 shadow-sm' 
+                    : 'bg-white/5 hover:bg-white/10 ring-1 ring-white/10'}`}>
                   <Input
                     ref={searchInputRef}
                     placeholder="Search within chapter..."
@@ -405,7 +405,7 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                       setSearchTerm(e.target.value);
                       setShowSearchResults(e.target.value.trim().length > 0);
                     }}
-                    className={`pr-3 h-9 border-0 focus:ring-0 focus:outline-none placeholder:text-offBlack/40
+                    className={`pr-3 h-9 border-0 focus:ring-0 focus:outline-none placeholder:text-[#e5eef2]/40 text-[#e5eef2]
                       transition-all duration-300 ease-in-out backdrop-blur-sm text-base
                       ${isSearchVisible 
                         ? 'w-64 opacity-100 bg-transparent pl-4' 
@@ -425,12 +425,12 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                     }}
                     className={`flex items-center space-x-1.5 px-3 py-2 transition-all duration-200
                       ${isSearchVisible 
-                        ? 'text-blue hover:bg-blue/20' 
-                        : 'text-offBlack/70 hover:bg-offBlack/10'}`}
+                        ? 'text-neon-500 hover:bg-white/10' 
+                        : 'text-[#e5eef2]/70 hover:bg-white/5'}`}
                     title="Toggle Search"
                   >
-                    <Search className={`h-4 w-4 transition-colors ${isSearchVisible ? 'text-blue' : 'text-offBlack/70'}`} />
-                    <span className={`text-sm font-medium transition-colors ${isSearchVisible ? 'text-blue' : 'text-offBlack/70'}`}>
+                    <Search className={`h-4 w-4 transition-colors ${isSearchVisible ? 'text-neon-500' : 'text-[#e5eef2]/70'}`} />
+                    <span className={`text-sm font-medium transition-colors ${isSearchVisible ? 'text-neon-500' : 'text-[#e5eef2]/70'}`}>
                       {isSearchVisible ? 'Close' : 'Search'}
                     </span>
                   </Button>
@@ -440,7 +440,7 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                 variant="ghost"
                 size="icon"
                 onClick={handleClose}
-                className="text-offBlack hover:bg-fadedBlue16"
+                className="text-[#e5eef2] hover:bg-white/10"
               >
                 <X className="h-5 w-5" />
               </Button>
@@ -481,14 +481,14 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                              </div>
                            </div>
                          ) : (
-                           <div className="space-y-3">
+                         <div className="space-y-3">
                              <div className="text-sm text-offBlack/70 mb-4 font-medium">
                                Search Results ({searchResults.length} sections):
                              </div>
                              {searchResults.map((result, index) => (
-                               <Card 
-                                 key={result.section.id}
-                                 className="border border-offBlack16 hover:border-blue/30 hover:shadow-sm transition-all cursor-pointer"
+                                <Card 
+                                  key={result.section.id}
+                                  className="border border-white/10 hover:border-neon-500/40 hover:shadow-crt transition-all cursor-pointer"
                                  onClick={() => {
                                    setShowSearchResults(false);
                                    setIsSearchVisible(false);
@@ -504,38 +504,38 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                                  <CardContent className="p-4">
                                    <div className="flex items-start space-x-3">
                                      <div className="flex-shrink-0 mt-1">
-                                       {result.section.granularType === 'chapter' ? (
-                                         <BookOpen className="h-4 w-4 text-blue" />
-                                       ) : (
-                                         <FileText className="h-4 w-4 text-green-600" />
-                                       )}
+                                        {result.section.granularType === 'chapter' ? (
+                                          <BookOpen className="h-4 w-4 text-neon-500" />
+                                        ) : (
+                                          <FileText className="h-4 w-4 text-neon-500" />
+                                        )}
                                      </div>
                                      
                                      <div className="flex-1 min-w-0">
-                                       <div className="flex items-center space-x-2 mb-2">
-                                         <h4 className="font-semibold text-offBlack">
+                                        <div className="flex items-center space-x-2 mb-2">
+                                          <h4 className="font-semibold text-[#e5eef2]">
                                            {highlightText(result.section.fullTitle, searchTerm)}
                                          </h4>
-                                         <Badge variant="outline" className="text-xs">
+                                          <Badge variant="outline" className="text-xs">
                                            {result.section.granularType === 'chapter' ? 'Chapter' : result.section.type?.toUpperCase()}
                                          </Badge>
                                        </div>
                                        
-                                       {result.matches.slice(0, 2).map((match, matchIndex) => (
-                                         <p key={matchIndex} className="text-sm text-offBlack/70 mb-1 leading-relaxed">
+                                        {result.matches.slice(0, 2).map((match, matchIndex) => (
+                                          <p key={matchIndex} className="text-sm text-[#e5eef2]/70 mb-1 leading-relaxed">
                                            ...{highlightText(match.context, searchTerm)}...
                                          </p>
                                        ))}
                                        
                                        {result.matches.length > 2 && (
-                                         <p className="text-xs text-blue mt-2">
+                                          <p className="text-xs text-neon-500 mt-2">
                                            +{result.matches.length - 2} more matches
                                          </p>
                                        )}
                                      </div>
                                      
                                      <div className="flex-shrink-0">
-                                       <ArrowRight className="h-4 w-4 text-offBlack/30" />
+                                        <ArrowRight className="h-4 w-4 text-[#e5eef2]/40" />
                                      </div>
                                    </div>
                                  </CardContent>
@@ -558,8 +558,8 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
                              }`}
                              onMouseEnter={() => setActiveSection(subsection.id)}
                            >
-                             <div className="flex items-center space-x-2 mb-3">
-                               <h3 className="text-lg font-semibold text-offBlack">
+                              <div className="flex items-center space-x-2 mb-3">
+                                <h3 className="text-lg font-semibold text-[#e5eef2]">
                                  {subsection.fullTitle}
                                </h3>
                                <Badge variant="outline" className="text-xs">

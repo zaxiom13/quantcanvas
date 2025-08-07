@@ -1,11 +1,10 @@
 import React from 'react';
 import { KdbConsole } from '@/KdbConsole';
 import { Toaster } from '@/components/ui/sonner';
-import { SimpleVisualOutput } from '@/components/SimpleVisualOutput';
 import { Header } from '@/components/Header';
-import { NavigationSidebar } from '@/components/NavigationSidebar';
-import { ReferenceCard } from '@/components/ReferenceCard';
-import { EnhancedChapterModal } from '@/components/EnhancedChapterModal';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import RightDock from '@/components/RightDock';
+import { CommandBar } from '@/components/CommandBar';
 import { saveStateManager, ReadingPosition, Chapter } from '@/lib/saveState';
 import { chapterLoader } from '@/lib/chapterLoader';
 
@@ -33,16 +32,13 @@ const isDevMode = true;
   const [lastQuery, setLastQuery] = useState('');
   
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isVisualOutputOpen, setIsVisualOutputOpen] = useState(false);
   const [activeView, setActiveView] = useState('console');
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
-  const [isLearningGuideOpen, setIsLearningGuideOpen] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
-  const [isChapterModalOpen, setIsChapterModalOpen] = useState(false);
   const [readingPosition, setReadingPosition] = useState<ReadingPosition | null>(null);
   const [granularChapters, setGranularChapters] = useState<GranularChapter[]>([]);
   const setQueryRef = useRef<((query: string) => void) | null>(null);
+  const executeQueryRef = useRef<((query: string) => void) | null>(null);
 
   // Load granular chapters data
   useEffect(() => {
@@ -108,22 +104,14 @@ const isDevMode = true;
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const toggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
-    // Focus query input after layout change
-    setTimeout(() => {
-      if (setQueryRef.current) {
-        setQueryRef.current('');
-      }
-    }, 300);
-  };
+
 
   const openVisualOutput = () => {
-    setIsVisualOutputOpen(true);
+    // No longer needed - visual output is now in the right dock
   };
 
   const closeVisualOutput = () => {
-    setIsVisualOutputOpen(false);
+    // No longer needed - visual output is now in the right dock
     // End any active modes when closing the visual output
     if (isMouseMode) setIsMouseMode(false);
     if (isLiveMode) setIsLiveMode(false);
@@ -144,6 +132,8 @@ const isDevMode = true;
   };
 
   const handleApplyQuery = (query: string) => {
+    // Set query in input field instead of auto-executing
+    // User can press Enter to execute when ready
     if (setQueryRef.current) {
       setQueryRef.current(query);
     }
@@ -152,21 +142,16 @@ const isDevMode = true;
   const resumeReading = () => {
     if (readingPosition && selectedChapter) {
       console.log('Resuming reading with position:', readingPosition);
-      setIsChapterModalOpen(true);
+      // No longer opening modal - reading happens in right dock chapter tab
     }
   };
 
   const openLearningGuide = () => {
-    setIsLearningGuideOpen(true);
+    // No longer needed - learning guide is now in the right dock
   };
 
   const closeLearningGuide = () => {
-    setIsLearningGuideOpen(false);
-  };
-
-  const openChapterSearch = () => {
-    // TODO: Implement chapter search functionality
-    console.log('Chapter search requested');
+    // No longer needed - learning guide is now in the right dock
   };
 
 
@@ -174,13 +159,11 @@ const isDevMode = true;
   const handleChapterSelect = (chapter: Chapter) => {
     setSelectedChapter(chapter);
     saveStateManager.updateSelectedChapter(chapter);
-    setIsChapterModalOpen(true);
+    // No longer opening modal - chapter reading happens in right dock
   };
 
   const closeChapterModal = () => {
-    setIsChapterModalOpen(false);
-    // Don't clear selectedChapter here so Resume Reading can work
-    // setSelectedChapter(null);
+    // No longer needed - no chapter modal
   };
 
   // Update save state when reading position changes
@@ -190,13 +173,13 @@ const isDevMode = true;
   };
 
   return (
-    <div className="h-screen bg-offWhite text-offBlack flex flex-col overflow-hidden">
+    <div className="h-screen bg-offBlack text-offBlack flex flex-col overflow-hidden">
       {/* Enhanced Header */}
 <Header 
         isDevMode={isDevMode} 
         connectionStatus={connectionStatus}
         activeView={activeView}
-        hasReadingPosition={!!readingPosition && !isChapterModalOpen}
+        hasReadingPosition={!!readingPosition}
         onResumeReading={resumeReading}
         readingChapterTitle={selectedChapter?.title}
         readingPosition={readingPosition}
@@ -205,74 +188,67 @@ const isDevMode = true;
       
       {/* Main Console Layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Navigation Sidebar */}
-        <NavigationSidebar 
-          isCollapsed={isSidebarCollapsed}
-          onToggle={toggleSidebar}
-          activeView={activeView}
-          onViewChange={setActiveView}
-          onLearningGuideOpen={openLearningGuide}
-          onChapterSelect={handleChapterSelect}
-          onChapterSearchOpen={openChapterSearch}
-        />
-        
-        {/* Main Content Area */}
-        <main className="flex-1 overflow-hidden p-3 bg-gradient-to-br from-offWhite to-fadedBlue8">
-          <div className="h-full flex flex-col gap-3">
-            {/* KDB Console - Full Height */}
-            <div className="flex-1 min-h-0">
-              <div className="h-full bg-white rounded-xl border-2 border-offBlack16 shadow-lg overflow-hidden">
-                <div className="h-full">
-                  <KdbConsole
-                    onVisualData={setVisualData}
-                    onQuerySet={handleQuerySet}
-                    onConnectionChange={setConnectionStatus}
-                    activeView={activeView}
-                    onOpenVisualOutput={openVisualOutput}
-                    hasVisualData={!!visualData}
-                    onQueryChange={setQuery}
-                    onLastQueryChange={setLastQuery}
+        {/* Resizable main area with right dock */}
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          <ResizablePanel defaultSize={70} minSize={50}>
+            <main className="h-full overflow-hidden p-3 bg-gradient-to-br from-[#0b0f10] to-[#0f1416]">
+              <div className="h-full flex flex-col gap-3">
+                <div className="flex-shrink-0">
+                  <CommandBar
+                    hasQuery={!!lastQuery}
                     isMouseMode={isMouseMode}
                     isLiveMode={isLiveMode}
                     onToggleMouseMode={toggleMouseMode}
                     onToggleLiveMode={toggleLiveMode}
+                    onClearConsole={() => {
+                      // pass through via ref later if needed
+                    }}
                   />
                 </div>
+                <div className="flex-1 min-h-0">
+                  <div className="h-full bg-[#0f1416] rounded-md border border-white/10 shadow-crt overflow-hidden">
+                    <KdbConsole
+                      onVisualData={setVisualData}
+                      onQuerySet={handleQuerySet}
+                      onConnectionChange={setConnectionStatus}
+                      activeView={activeView}
+                      hasVisualData={!!visualData}
+                      onQueryChange={setQuery}
+                      onLastQueryChange={setLastQuery}
+                      isMouseMode={isMouseMode}
+                      isLiveMode={isLiveMode}
+                      onToggleMouseMode={toggleMouseMode}
+                      onToggleLiveMode={toggleLiveMode}
+                    onProvideExecutor={(fn) => { executeQueryRef.current = fn; }}
+                    />
+                  </div>
+                </div>
               </div>
+            </main>
+          </ResizablePanel>
+          <ResizableHandle withHandle className="bg-white/5" />
+          <ResizablePanel defaultSize={30} minSize={20}>
+            <div className="h-full p-3">
+                <RightDock 
+                onApplyQuery={handleApplyQuery}
+                activeView={activeView}
+                onViewChange={setActiveView}
+                onChapterSelect={handleChapterSelect}
+                selectedChapter={selectedChapter}
+                visualData={visualData}
+                isMouseMode={isMouseMode}
+                isLiveMode={isLiveMode}
+                onToggleMouseMode={toggleMouseMode}
+                onToggleLiveMode={toggleLiveMode}
+                hasQuery={!!lastQuery}
+                lastQuery={lastQuery}
+                  readingPosition={readingPosition}
+                  onPositionChange={handleReadingPositionChange}
+              />
             </div>
-          </div>
-        </main>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
-
-      {/* Reference Card Modal */}
-      <ReferenceCard
-        isOpen={isLearningGuideOpen}
-        onClose={closeLearningGuide}
-      />
-
-      {/* Chapter Modal */}
-      <EnhancedChapterModal
-        key={isChapterModalOpen ? 'modal-open' : 'modal-closed'}
-        isOpen={isChapterModalOpen}
-        onClose={closeChapterModal}
-        chapter={selectedChapter}
-        onApplyQuery={handleApplyQuery}
-        onPositionChange={handleReadingPositionChange}
-        initialPosition={readingPosition}
-      />
-
-      {/* Visual Output Modal */}
-      <SimpleVisualOutput
-        data={visualData}
-        isOpen={isVisualOutputOpen}
-        onClose={closeVisualOutput}
-        isMouseMode={isMouseMode}
-        isLiveMode={isLiveMode}
-        onToggleMouseMode={toggleMouseMode}
-        onToggleLiveMode={toggleLiveMode}
-        hasQuery={!!lastQuery}
-        lastQuery={lastQuery}
-      />
 
       <Toaster />
     </div>
