@@ -90,18 +90,13 @@ const isDevMode = true;
   // Global keyboard shortcut to focus query input
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + L to focus query input
       if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
         e.preventDefault();
-        if (setQueryRef.current) {
-          // Trigger focus by setting the current query (if any) to itself
-          setQueryRef.current('');
-        }
+        setQueryRef.current?.('');
       }
     };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { passive: true } as any);
+    return () => window.removeEventListener('keydown', handleKeyDown as any);
   }, []);
 
 
@@ -122,13 +117,23 @@ const isDevMode = true;
   };
 
   const toggleMouseMode = () => {
-    if (isLiveMode) setIsLiveMode(false);
-    setIsMouseMode(!isMouseMode);
+    if (!isMouseMode) {
+      // enabling mouse -> disable live
+      if (isLiveMode) setIsLiveMode(false);
+      setIsMouseMode(true);
+    } else {
+      setIsMouseMode(false);
+    }
   };
 
   const toggleLiveMode = () => {
-    if (isMouseMode) setIsMouseMode(false);
-    setIsLiveMode(!isLiveMode);
+    if (!isLiveMode) {
+      // enabling live -> disable mouse
+      if (isMouseMode) setIsMouseMode(false);
+      setIsLiveMode(true);
+    } else {
+      setIsLiveMode(false);
+    }
   };
 
   const handleApplyQuery = (query: string) => {

@@ -221,12 +221,27 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
   }, [isOpen, isSearchVisible]);
 
   const getSubsections = (chapterId: string) => {
-    return granularChapters.filter(
+    const list = granularChapters.filter(
       ch => ch.granularType === 'subsection' && ch.parentChapter === chapterId
-    ).sort((a, b) => {
+    );
+    if (list.length <= 1) return list;
+    let sorted = true;
+    for (let i = 1; i < list.length; i++) {
+      const aParts = list[i - 1].number.split('.').map(Number);
+      const bParts = list[i].number.split('.').map(Number);
+      const maxLen = Math.max(aParts.length, bParts.length);
+      for (let j = 0; j < maxLen; j++) {
+        const aVal = aParts[j] || 0;
+        const bVal = bParts[j] || 0;
+        if (aVal > bVal) { sorted = false; break; }
+        if (aVal < bVal) { break; }
+      }
+      if (!sorted) break;
+    }
+    if (sorted) return list;
+    return list.slice().sort((a, b) => {
       const aParts = a.number.split('.').map(Number);
       const bParts = b.number.split('.').map(Number);
-      
       for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
         const aVal = aParts[i] || 0;
         const bVal = bParts[i] || 0;

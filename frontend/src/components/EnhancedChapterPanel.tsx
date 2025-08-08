@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HtmlRenderer } from './HtmlRenderer';
+import { saveStateManager } from '@/lib/saveState';
 
 interface GranularChapter {
   id: string;
@@ -102,33 +103,44 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
     loadGranularChapters();
   }, []);
 
+  // Guard against oscillation: derive once per chapter change
+  const hasAppliedInitialRef = useRef<string | null>(null);
   useEffect(() => {
-    if (chapter && granularChapters.length > 0) {
-      setSearchTerm('');
-      setShowSearchResults(false);
-      setIsSearchVisible(false);
+    if (!chapter || granularChapters.length === 0) return;
+    if (hasAppliedInitialRef.current === chapter.id) return;
 
-      const subsections = getSubsections(chapter.id);
-      if (subsections.length > 0) {
-        let targetSectionId = subsections[0].id;
-        if (initialPosition && initialPosition.chapterId === chapter.id && initialPosition.activeSection) {
-          targetSectionId = initialPosition.activeSection;
-        }
-        setActiveSection(targetSectionId);
-        setTimeout(() => {
-          let elementToScrollTo: HTMLElement | null = null;
-          if (initialPosition?.qBlockId) {
-            elementToScrollTo = document.getElementById(initialPosition.qBlockId);
-          }
-          if (!elementToScrollTo) {
-            elementToScrollTo = document.getElementById(targetSectionId);
-          }
-          if (elementToScrollTo) {
-            elementToScrollTo.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }, 150);
-      }
+    setSearchTerm('');
+    setShowSearchResults(false);
+    setIsSearchVisible(false);
+
+    const subsections = getSubsections(chapter.id);
+    if (subsections.length === 0) {
+      hasAppliedInitialRef.current = chapter.id;
+      return;
     }
+
+    let targetSectionId = subsections[0].id;
+    if (
+      initialPosition &&
+      initialPosition.chapterId === chapter.id &&
+      initialPosition.activeSection
+    ) {
+      targetSectionId = initialPosition.activeSection;
+    }
+    setActiveSection(targetSectionId);
+    setTimeout(() => {
+      let elementToScrollTo: HTMLElement | null = null;
+      if (initialPosition?.qBlockId) {
+        elementToScrollTo = document.getElementById(initialPosition.qBlockId);
+      }
+      if (!elementToScrollTo) {
+        elementToScrollTo = document.getElementById(targetSectionId);
+      }
+      if (elementToScrollTo) {
+        elementToScrollTo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      hasAppliedInitialRef.current = chapter.id;
+    }, 150);
   }, [chapter, granularChapters, initialPosition]);
 
   useEffect(() => {
@@ -137,7 +149,9 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
     const subsections = getSubsections(chapter.id);
     if (!subsections.length) return;
 
+    let ignoreUntil = 0;
     const handleScroll = () => {
+      if (Date.now() < ignoreUntil) return;
       const viewportCenter = scrollContainer.scrollTop + scrollContainer.clientHeight / 2;
       let newActiveSectionId: string | null = null;
       for (const subsection of subsections) {
@@ -155,24 +169,47 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
     };
     const throttledHandleScroll = throttle(handleScroll, 100);
     scrollContainer.addEventListener('scroll', throttledHandleScroll);
+
+    // Briefly ignore scroll-after-programmatic-scroll to prevent oscillation
+    const stopIgnore = () => { ignoreUntil = 0; };
+    ignoreUntil = Date.now() + 400;
+    const t = setTimeout(stopIgnore, 420);
+
     return () => {
+      clearTimeout(t);
       scrollContainer.removeEventListener('scroll', throttledHandleScroll);
     };
   }, [chapter, granularChapters]);
 
   const getSubsections = (chapterId: string) => {
-    return granularChapters
-      .filter((ch) => ch.granularType === 'subsection' && ch.parentChapter === chapterId)
-      .sort((a, b) => {
-        const aParts = a.number.split('.').map(Number);
-        const bParts = b.number.split('.').map(Number);
-        for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-          const aVal = aParts[i] || 0;
-          const bVal = bParts[i] || 0;
-          if (aVal !== bVal) return aVal - bVal;
-        }
-        return 0;
-      });
+    const list = granularChapters
+      .filter((ch) => ch.granularType === 'subsection' && ch.parentChapter === chapterId);
+    if (list.length <= 1) return list;
+    // Only sort when needed to reduce work
+    let sorted = true;
+    for (let i = 1; i < list.length; i++) {
+      const aParts = list[i - 1].number.split('.').map(Number);
+      const bParts = list[i].number.split('.').map(Number);
+      const maxLen = Math.max(aParts.length, bParts.length);
+      for (let j = 0; j < maxLen; j++) {
+        const aVal = aParts[j] || 0;
+        const bVal = bParts[j] || 0;
+        if (aVal > bVal) { sorted = false; break; }
+        if (aVal < bVal) { break; }
+      }
+      if (!sorted) break;
+    }
+    if (sorted) return list;
+    return list.slice().sort((a, b) => {
+      const aParts = a.number.split('.').map(Number);
+      const bParts = b.number.split('.').map(Number);
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const aVal = aParts[i] || 0;
+        const bVal = bParts[i] || 0;
+        if (aVal !== bVal) return aVal - bVal;
+      }
+      return 0;
+    });
   };
 
   const searchResults = useMemo(() => {
@@ -227,7 +264,6 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
     try {
       const title = `${chapter.fullTitle}`;
       const bookmarkTitle = `Bookmark: ${title}`;
-      const { saveStateManager } = require('@/lib/saveState');
       saveStateManager.addBookmark({
         id: `${chapter.id}-${sectionId}-${Date.now()}`,
         title: bookmarkTitle,
@@ -235,6 +271,8 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
         chapter: chapter.fullTitle || chapter.title,
         section: sectionId,
       });
+      // Notify other panels in this tab to refresh
+      window.dispatchEvent(new CustomEvent('quantCanvas-bookmarks-updated'));
     } catch (err) {
       console.error('Failed to add bookmark', err);
     }
@@ -242,7 +280,17 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
 
   const handleApply = (query: string, blockId: string, sectionId: string) => {
     if (onApplyQuery) onApplyQuery(query);
+    if (onPositionChange && chapter) {
+      onPositionChange({ chapterId: chapter.id, activeSection: sectionId, qBlockId: blockId });
+    }
   };
+
+  // Persist reading position when active section changes
+  useEffect(() => {
+    if (chapter && activeSection && onPositionChange) {
+      onPositionChange({ chapterId: chapter.id, activeSection });
+    }
+  }, [chapter, activeSection, onPositionChange]);
 
   if (!chapter) {
     return (

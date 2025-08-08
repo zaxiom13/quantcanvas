@@ -91,3 +91,5 @@ export const LearningGuide: React.FC<LearningGuideProps> = React.memo(({ isExpan
     </div>
   );
 });
+
+export default LearningGuide;

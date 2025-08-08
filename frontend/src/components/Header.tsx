@@ -32,10 +32,10 @@ export const Header: React.FC<HeaderProps> = ({ activeView }) => {
     const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString());
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentTime(new Date().toLocaleTimeString());
-        }, 1000);
-
+        // Update once per minute to reduce re-renders; seconds precision not critical here
+        const update = () => setCurrentTime(new Date().toLocaleTimeString());
+        update();
+        const timer = setInterval(update, 60_000);
         return () => clearInterval(timer);
     }, []);
 

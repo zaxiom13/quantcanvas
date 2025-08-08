@@ -21,6 +21,7 @@ interface Result {
   type: 'query' | 'response' | 'error' | 'system';
   content: any;
   timestamp: string;
+  createdAtMs?: number;
 }
 
 // New interface for grouped query/response pairs
@@ -33,6 +34,7 @@ interface ResultGroup {
   error?: string;
   errorTimestamp?: string;
   isExpanded: boolean;
+  createdAtMs?: number;
 }
 
 // Live session interface for live/mouse mode
@@ -44,6 +46,7 @@ export interface LiveSession {
   endTime?: string;
   results: any[];
   isExpanded: boolean;
+  createdAtMs?: number;
 }
 
 interface KdbConsoleProps {
@@ -102,6 +105,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   const consoleContainerRef = useRef<HTMLDivElement>(null);
   const lastMousePosRef = useRef({ x: 0, y: 0 });
   const lastQueryTimeRef = useRef(0);
+  const lastVisualUpdateRef = useRef(0);
   
   // Session management for live/mouse mode
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
@@ -109,35 +113,20 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
 
   // Combined entries for render (memoized and capped to reduce DOM work)
   const combinedEntries = useMemo(() => {
-    const all = [
-      ...resultGroups.map((group) => ({
-        type: 'resultGroup' as const,
-        data: group,
-        timestamp: group.queryTimestamp,
-        key: group.id
-      })),
-      ...results.map((result, index) => ({
-        type: 'result' as const,
-        data: result,
-        timestamp: result.timestamp,
-        key: `result-${index}`
-      })),
-      ...liveSessions.map((session) => ({
-        type: 'session' as const,
-        data: session,
-        timestamp: session.startTime,
-        key: session.id
-      }))
-    ];
-    const parseTime = (timeStr: string) => {
-      const parts = timeStr.split(':').map(Number);
-      if (parts.length < 2) return 0;
-      const [hours, minutes, seconds = 0] = parts;
-      return hours * 3600 + minutes * 60 + seconds;
+    const toEntry = (type: 'resultGroup' | 'result' | 'session', data: any, timestampStr: string, key: string) => {
+      const createdAtMs = data.createdAtMs ?? Date.now();
+      return { type, data, createdAtMs, key } as const;
     };
-    const sorted = all.sort((a, b) => parseTime(a.timestamp) - parseTime(b.timestamp));
-    const MAX_ENTRIES = 300;
-    return sorted.length > MAX_ENTRIES ? sorted.slice(sorted.length - MAX_ENTRIES) : sorted;
+
+    const all = [
+      ...resultGroups.map((group) => toEntry('resultGroup', group, group.queryTimestamp, group.id)),
+      ...results.map((result, index) => toEntry('result', result, result.timestamp, `result-${index}`)),
+      ...liveSessions.map((session) => toEntry('session', session, session.startTime, session.id)),
+    ];
+
+    all.sort((a, b) => a.createdAtMs - b.createdAtMs);
+    const MAX_ENTRIES = 200;
+    return all.length > MAX_ENTRIES ? all.slice(all.length - MAX_ENTRIES) : all;
   }, [resultGroups, results, liveSessions]);
 
   // Focus the query input
@@ -179,14 +168,16 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     console.log('🕐 Query execution started at:', new Date().toISOString());
     
     // Create a new result group for this query
-    const groupId = `query-${Date.now()}`;
-    const queryTimestamp = new Date().toLocaleTimeString();
+    const nowMs = Date.now();
+    const groupId = `query-${nowMs}`;
+    const queryTimestamp = new Date(nowMs).toLocaleTimeString();
     
     const newGroup: ResultGroup = {
       id: groupId,
       query: query.trim(),
       queryTimestamp,
-      isExpanded: false // Start collapsed for cleaner interface
+      isExpanded: false, // Start collapsed for cleaner interface
+      createdAtMs: nowMs,
     };
     
     console.log('📊 Created result group:', groupId);
@@ -394,9 +385,16 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                 if (currentSessionId) {
                   setLiveSessions(prev => prev.map(session => session.id === currentSessionId ? { ...session, results: [...session.results, resultEntry] } : session));
                 }
-                if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' &&
-                  result !== null && result !== undefined && !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined))) &&
-                  resultGroups.length === 0) {
+                // Forward to visual output with light throttle during mouse sessions
+                const now = Date.now();
+                if (
+                  onVisualData &&
+                  now - lastVisualUpdateRef.current > 150 &&
+                  typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' &&
+                  result !== null && result !== undefined &&
+                  !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined)))
+                ) {
+                  lastVisualUpdateRef.current = now;
                   onVisualData(result);
                 }
               }
@@ -416,8 +414,8 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
       }
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => window.removeEventListener('mousemove', handleMouseMove as any);
   }, [isMouseMode, isLiveMode, isInputFocused, isConsoleHovered, isConnected, isLoading, currentSessionId, onVisualData, resultGroups.length, lastQuery, query]);
 
   // Live mode execution (interval-based)
@@ -426,9 +424,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
     if (isLiveMode && queryToUse && isConnected && !isLoading) {
       const interval = setInterval(() => {
         if (kdbClientRef.current && queryToUse) {
-          // Get current mouse coordinates at the time of execution
-          const currentMouseX = mouseX;
-          const currentMouseY = mouseY;
+          // Get latest mouse coordinates from refs at execution time
+          const currentMouseX = mouseXRef.current;
+          const currentMouseY = mouseYRef.current;
           const mousePrefix = `mouseX:${currentMouseX.toFixed(6)}; mouseY:${currentMouseY.toFixed(6)}; `;
           const fullQuery = mousePrefix + queryToUse;
           
@@ -478,11 +476,16 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                 ));
               }
               
-              // Don't update visual data from live mode if there are regular query results
-              if (onVisualData && typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' && 
-                  result !== null && result !== undefined && 
-                  !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined))) && 
-                  resultGroups.length === 0) {
+              // Forward to visual output with light throttle during live sessions regardless of existing results
+              const now = Date.now();
+              if (
+                onVisualData &&
+                now - lastVisualUpdateRef.current > 150 &&
+                typeof result !== 'string' && typeof result !== 'number' && typeof result !== 'boolean' &&
+                result !== null && result !== undefined &&
+                !(Array.isArray(result) && (result.length === 0 || result.every(item => item === null || item === undefined)))
+              ) {
+                lastVisualUpdateRef.current = now;
                 onVisualData(result);
               }
             }
@@ -522,8 +525,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
 
   // Session creation and management for live/mouse modes
   const createSession = useCallback((mode: 'live' | 'mouse', query: string) => {
-    const sessionId = `${mode}-${Date.now()}`;
-    const startTime = new Date().toLocaleTimeString();
+    const now = Date.now();
+    const sessionId = `${mode}-${now}`;
+    const startTime = new Date(now).toLocaleTimeString();
     
     const newSession: LiveSession = {
       id: sessionId,
@@ -531,7 +535,8 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
       query,
       startTime,
       results: [],
-      isExpanded: true // Start expanded to show activity
+      isExpanded: true, // Start expanded to show activity
+      createdAtMs: now,
     };
     
     setLiveSessions(prev => [...prev, newSession]);
@@ -567,13 +572,29 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   // Effect to handle mode changes and session creation/ending
   useEffect(() => {
     const queryToUse = lastQuery || query.trim();
-    if ((isMouseMode || isLiveMode) && queryToUse && !currentSessionId) {
-      const mode = isMouseMode ? 'mouse' : 'live';
-      createSession(mode, queryToUse);
-    } else if ((!isMouseMode && !isLiveMode) && currentSessionId) {
-      endCurrentSession();
+    const desiredMode: 'mouse' | 'live' | null = isMouseMode ? 'mouse' : isLiveMode ? 'live' : null;
+
+    const currentSession = currentSessionId
+      ? liveSessions.find((s) => s.id === currentSessionId) || null
+      : null;
+
+    if (!desiredMode) {
+      if (currentSessionId) endCurrentSession();
+      return;
     }
-  }, [isMouseMode, isLiveMode, lastQuery, query, currentSessionId, createSession, endCurrentSession]);
+
+    if (!queryToUse) return;
+
+    if (!currentSession) {
+      createSession(desiredMode, queryToUse);
+      return;
+    }
+
+    if (currentSession.mode !== desiredMode) {
+      endCurrentSession();
+      createSession(desiredMode, queryToUse);
+    }
+  }, [isMouseMode, isLiveMode, lastQuery, query, currentSessionId, liveSessions, createSession, endCurrentSession]);
   
   // Notify parent of lastQuery changes
   useEffect(() => {
@@ -695,9 +716,13 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
 
   useEffect(() => {
     if (resultsRef.current) {
-      resultsRef.current.scrollTop = resultsRef.current.scrollHeight;
+      // Use requestAnimationFrame to batch scroll with paint
+      const el = resultsRef.current;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
     }
-  }, [results]);
+  }, [combinedEntries.length]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -717,8 +742,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   }, [results.length, resultGroups.length, onVisualData]);
 
   const addResult = useCallback((type: Result['type'], content: any) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setResults((prev) => [...prev, { type, content, timestamp }]);
+    const createdAtMs = Date.now();
+    const timestamp = new Date(createdAtMs).toLocaleTimeString();
+    setResults((prev) => [...prev, { type, content, timestamp, createdAtMs }]);
   }, []);
 
   useEffect(() => {
@@ -1668,17 +1694,30 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
               </div>
 
               <div className={`p-2 border-t border-white/10 flex-shrink-0 transition-all duration-200 ${isInputFocused ? 'bg-white/5' : ''}`}>
-                  <Textarea
-                      ref={queryInputRef}
-                      value={query}
-                      onChange={handleQueryChange}
-                      onKeyDown={handleKeyPress}
-                      onFocus={handleInputFocus}
-                      onBlur={handleInputBlur}
-                      placeholder={isConnected ? "Enter kdb+ query... (Ctrl+L to focus)" : "Not connected. Click Connect."}
-                      className={`w-full bg-[#0b0f10] border-white/15 focus:ring-neon-500/60 focus:border-neon-500/60 text-[#e5eef2] placeholder:text-[#e5eef2]/60 resize-none font-mono text-sm transition-all duration-200 ${isInputFocused ? 'shadow-[0_0_20px_rgba(57,255,20,0.15)]' : ''}`}
-                      disabled={!isConnected || isLoading}
-                  />
+                  <div className="flex items-end gap-2">
+                    <Textarea
+                        ref={queryInputRef}
+                        value={query}
+                        onChange={handleQueryChange}
+                        onKeyDown={handleKeyPress}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        placeholder={isConnected ? "Enter kdb+ query... (Enter to run)" : "Not connected. Click Connect."}
+                        className={`flex-1 bg-[#0b0f10] border-white/15 focus:ring-neon-500/60 focus:border-neon-500/60 text-[#e5eef2] placeholder:text-[#e5eef2]/60 resize-none font-mono text-sm transition-all duration-200 ${isInputFocused ? 'shadow-[0_0_20px_rgba(57,255,20,0.15)]' : ''}`}
+                        disabled={!isConnected || isLoading}
+                    />
+                    <Button
+                      aria-label="Run query"
+                      title={isConnected ? 'Run (Enter)' : 'Connect to run queries'}
+                      onClick={() => executeQuery()}
+                      variant="secondary"
+                      size="sm"
+                      disabled={!isConnected || isLoading || !query.trim()}
+                    >
+                      <Play className="h-4 w-4 mr-1" />
+                      Send
+                    </Button>
+                  </div>
               </div>
 
               <div className="px-4 py-2 border-t border-white/10 flex items-center justify-between flex-shrink-0">

@@ -64,13 +64,17 @@ const BookPanel: React.FC<BookPanelProps> = ({
   useEffect(() => {
     refreshBookmarks();
     const onStorage = (e: StorageEvent) => {
-      // Refresh on any save-state change
       if (e.key === null || e.key === 'quantCanvas-save-state') {
         refreshBookmarks();
       }
     };
+    const onLocalEvent = () => refreshBookmarks();
     window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
+    window.addEventListener('quantCanvas-bookmarks-updated', onLocalEvent as EventListener);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('quantCanvas-bookmarks-updated', onLocalEvent as EventListener);
+    };
   }, []);
 
   const compareChapterNumbers = (a: Chapter, b: Chapter): number => {
@@ -87,6 +91,17 @@ const BookPanel: React.FC<BookPanelProps> = ({
   };
 
   const sortedChapters = useMemo(() => {
+    // Avoid re-sorting if chapters already appear sorted by number
+    if (chapters.length > 1) {
+      let alreadySorted = true;
+      for (let i = 1; i < chapters.length; i++) {
+        if (compareChapterNumbers(chapters[i - 1], chapters[i]) > 0) {
+          alreadySorted = false;
+          break;
+        }
+      }
+      if (alreadySorted) return chapters;
+    }
     return [...chapters].sort(compareChapterNumbers);
   }, [chapters]);
 

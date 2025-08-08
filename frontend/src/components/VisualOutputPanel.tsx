@@ -25,7 +25,7 @@ interface VisualOutputPanelProps {
   lastQuery?: string;
 }
 
-const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
+const ImageCanvas: React.FC<{ data: any }> = React.memo(({ data }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isGrayscaleMatrix = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((row) => Array.isArray(row) && row.every((v) => typeof v === 'number'));
   const isColorMatrix = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((row) => Array.isArray(row) && row.every((pix) => Array.isArray(pix) && (pix.length === 3 || pix.length === 4)));
@@ -82,9 +82,9 @@ const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
       <canvas ref={canvasRef} className="max-w-full max-h-full w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
     </div>
   );
-};
+});
 
-const ChartView = ({ data }: { data: number[] }) => {
+const ChartView = React.memo(({ data }: { data: number[] }) => {
   const chartData = {
     labels: data.map((_, index) => index.toString()),
     datasets: [
@@ -107,9 +107,9 @@ const ChartView = ({ data }: { data: number[] }) => {
       </div>
     </div>
   );
-};
+});
 
-const TextView = ({ data }: { data: any }) => {
+const TextView = React.memo(({ data }: { data: any }) => {
   const formatData = (data: any): string => {
     if (data === null) return 'null';
     if (data === undefined) return 'undefined';
@@ -129,9 +129,9 @@ const TextView = ({ data }: { data: any }) => {
       <pre className="text-sm font-mono text-[#e5eef2] whitespace-pre-wrap break-words">{formatData(data)}</pre>
     </div>
   );
-};
+});
 
-const TableView = ({ data, columns }: { data: any[]; columns: any[] }) => {
+const TableView = React.memo(({ data, columns }: { data: any[]; columns: any[] }) => {
   const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
   return (
     <div className="w-full h-full overflow-auto bg-[#0b0f10] rounded-md border border-white/10 shadow-crt">
@@ -163,7 +163,7 @@ const TableView = ({ data, columns }: { data: any[]; columns: any[] }) => {
       </div>
     </div>
   );
-};
+});
 
 const Placeholder = () => (
   <div className="w-full h-full flex flex-col items-center justify-center text-offBlack/70 p-6">
@@ -205,6 +205,9 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
   };
   const isNumericArray = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((v) => typeof v === 'number' && Number.isFinite(v));
 
+  const hasMouseVars = (q?: string) => !!q && /(\bmouseX\b|\bmouseY\b)/i.test(q);
+  const shouldShowMouse = hasMouseVars(lastQuery);
+
   const currentView = useMemo(() => {
     if (isGrayscaleMatrix(data) || isColorMatrix(data)) return 'image';
     if (isNumericArray(data)) return 'chart';
@@ -238,12 +241,15 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
           <span className="text-sm">Visual Output</span>
         </div>
         <div className="flex items-center space-x-2">
-          <Button onClick={onToggleMouseMode} variant={isMouseMode ? 'secondary' : 'outline'} size="sm" className={`${isMouseMode ? 'border-neon-500/40' : ''}`} title="Toggle mouse mode" disabled={!hasQuery}>
-            <Mouse className="h-4 w-4" />
-          </Button>
-          <Button onClick={onToggleLiveMode} variant={isLiveMode ? 'secondary' : 'outline'} size="sm" title="Toggle live mode" disabled={!hasQuery}>
-            {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </Button>
+          {shouldShowMouse ? (
+            <Button onClick={onToggleMouseMode} variant={isMouseMode ? 'secondary' : 'outline'} size="sm" className={`${isMouseMode ? 'border-neon-500/40' : ''}`} title="Toggle mouse mode" disabled={!hasQuery}>
+              <Mouse className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button onClick={onToggleLiveMode} variant={isLiveMode ? 'secondary' : 'outline'} size="sm" title="Toggle live mode" disabled={!hasQuery}>
+              {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
       </div>
       <div className="flex-1 overflow-hidden p-3">
