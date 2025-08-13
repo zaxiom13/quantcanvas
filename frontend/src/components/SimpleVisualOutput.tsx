@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Download } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
@@ -13,6 +13,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import { exportCSV, exportJSON, exportCanvasPNG, exportChartPNG, exportText, maybeExportCSVFromUnknown } from '@/lib/export';
 
 // Register Chart.js components
 ChartJS.register(
@@ -37,7 +38,7 @@ interface SimpleVisualOutputProps {
 }
 
 // Image Canvas Component
-const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
+const ImageCanvas: React.FC<{ data: any; setCanvasEl?: (el: HTMLCanvasElement | null) => void }> = ({ data, setCanvasEl }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Type guards
@@ -114,7 +115,7 @@ const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
   return (
     <div className="h-full flex justify-center items-center bg-offWhite overflow-hidden p-1">
       <canvas
-        ref={canvasRef}
+        ref={(el) => { canvasRef.current = el; setCanvasEl?.(el); }}
         className="max-w-full max-h-full w-full h-full object-contain"
         style={{ imageRendering: 'pixelated' }}
       />
@@ -123,7 +124,7 @@ const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
 };
 
 // Chart View Component for displaying numeric arrays
-const ChartView = ({ data }: { data: number[] }) => {
+const ChartView = ({ data, chartRef }: { data: number[]; chartRef: React.MutableRefObject<any> }) => {
   const chartData = {
     labels: data.map((_, index) => index.toString()),
     datasets: [
@@ -179,7 +180,7 @@ const ChartView = ({ data }: { data: number[] }) => {
   return (
     <div className="h-full p-4 bg-[#0b0f10] rounded-md border border-white/10">
       <div className="h-full">
-        <Bar data={chartData} options={options} />
+        <Bar ref={chartRef as any} data={chartData} options={options} />
       </div>
     </div>
   );
@@ -349,6 +350,52 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
     return { tableData, columns };
   }, [data]);
 
+  const chartRef = useRef<any>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const handleExport = async () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (currentView === 'table' && tableData.length > 0) {
+      if (!maybeExportCSVFromUnknown(data, `table-${ts}.csv`)) {
+        exportCSV(tableData, `table-${ts}.csv`);
+      }
+      exportJSON(data, `table-${ts}.json`);
+      return;
+    }
+    if (currentView === 'chart' && Array.isArray(data)) {
+      let didPng = false;
+      if (chartRef.current) {
+        await exportChartPNG(chartRef.current, `chart-${ts}.png`);
+        didPng = true;
+      }
+      if (!didPng && chartContainerRef.current) {
+        const canvas = chartContainerRef.current.querySelector('canvas');
+        if (canvas) {
+          await exportCanvasPNG(canvas as HTMLCanvasElement, `chart-${ts}.png`);
+          didPng = true;
+        }
+      }
+      exportJSON(data, `chart-${ts}.json`);
+      exportCSV({ values: data }, `chart-${ts}.csv`);
+      return;
+    }
+    if (currentView === 'image') {
+      if (imageCanvasRef.current) {
+        await exportCanvasPNG(imageCanvasRef.current, `image-${ts}.png`);
+      }
+      if (Array.isArray(data)) {
+        exportJSON(data, `image-data-${ts}.json`);
+      }
+      return;
+    }
+    if (typeof data === 'string') {
+      exportText(data, `text-${ts}.txt`);
+    } else {
+      exportJSON(data, `data-${ts}.json`);
+    }
+  };
+
   if (!data) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -375,6 +422,11 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
             <div className="flex items-center space-x-2">
               <BarChart3 className="h-5 w-5 text-neon-500" />
               <span className="text-[#e5eef2]">Visual Output</span>
+            </div>
+            <div className="ml-auto">
+              <Button variant="outline" size="sm" onClick={handleExport} title="Export" disabled={!data}>
+                <Download className="h-4 w-4" />
+              </Button>
             </div>
             {/* Mouse and Live buttons removed - now only available in Visual Output Panel in right dock */}
           </DialogTitle>
@@ -444,12 +496,12 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
           )}
           
           {currentView === 'image' && (isGrayscaleMatrix(data) || isColorMatrix(data)) && (
-            <ImageCanvas data={data} />
+            <ImageCanvas data={data} setCanvasEl={(el) => (imageCanvasRef.current = el)} />
           )}
 
           {currentView === 'chart' && isNumericArray(data) && (
-            <div className="h-full overflow-hidden">
-              <ChartView data={data} />
+            <div ref={chartContainerRef} className="h-full overflow-hidden">
+              <ChartView data={data} chartRef={chartRef} />
             </div>
           )}
 

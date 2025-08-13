@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { BookOpen, FileText, Search, ArrowRight, ChevronLeft, BookmarkPlus } from 'lucide-react';
+import { BookOpen, FileText, Search, ArrowRight, ChevronLeft, BookmarkPlus, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HtmlRenderer } from './HtmlRenderer';
 import { saveStateManager } from '@/lib/saveState';
+import { exportHTML, exportText } from '@/lib/export';
 
 interface GranularChapter {
   id: string;
@@ -140,7 +141,7 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
         elementToScrollTo.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
       hasAppliedInitialRef.current = chapter.id;
-    }, 150);
+    }, 0);
   }, [chapter, granularChapters, initialPosition]);
 
   useEffect(() => {
@@ -262,13 +263,18 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
   const handleAddBookmark = (sectionId: string) => {
     if (!chapter) return;
     try {
-      const title = `${chapter.fullTitle}`;
-      const bookmarkTitle = `Bookmark: ${title}`;
+      const chapterLabel = chapter.fullTitle || chapter.title || '';
+      const subsections = getSubsections(chapter.id);
+      const subsection = subsections.find((s) => s.id === sectionId);
+      const subsectionLabel = subsection?.fullTitle || subsection?.title || '';
+      const bookmarkTitle = subsectionLabel
+        ? `${chapterLabel} — ${subsectionLabel}`
+        : `${chapterLabel}`;
       saveStateManager.addBookmark({
         id: `${chapter.id}-${sectionId}-${Date.now()}`,
         title: bookmarkTitle,
-        description: '',
-        chapter: chapter.fullTitle || chapter.title,
+        description: subsectionLabel,
+        chapter: chapterLabel,
         section: sectionId,
       });
       // Notify other panels in this tab to refresh
@@ -304,10 +310,20 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
   const hasSubsections = subsections.length > 0;
   const hasSearchResults = searchResults.length > 0;
 
+  const handleExportChapter = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    const filenameBase = (chapter.fullTitle || chapter.title || 'chapter').replace(/[^a-z0-9\-_]+/gi, '_');
+    // Export raw HTML and plain text
+    exportHTML(chapter.content, `${filenameBase}-${ts}.html`);
+    // Strip tags for plain text export
+    const plain = chapter.content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    exportText(plain, `${filenameBase}-${ts}.txt`);
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden text-[#e5eef2]">
       <div className="border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-start sm:items-center justify-between gap-2">
           <div className="flex items-center space-x-3">
             {onExit && (
               <Button
@@ -346,6 +362,17 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
               Add Bookmark
             </Button>
           )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 px-3 text-xs hover:border-neon-500/40 hover:bg-white/5"
+            onClick={handleExportChapter}
+            title="Export chapter (HTML/TXT)"
+            disabled={!chapter?.content}
+          >
+            <Download className="h-3 w-3 mr-2" />
+            Export
+          </Button>
           {hasSubsections && (
             <div className={`relative flex items-center rounded-md overflow-hidden transition-all duration-300 ease-in-out ${
               isSearchVisible ? 'bg-white/10 ring-1 ring-neon-500/30 shadow-sm' : 'bg-white/5 hover:bg-white/10 ring-1 ring-white/10'
@@ -360,7 +387,7 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
                 }}
                 tabIndex={isSearchVisible ? 0 : -1}
                 className={`pr-3 h-9 border-0 focus:ring-0 focus:outline-none placeholder:text-[#e5eef2]/40 text-[#e5eef2] transition-all duration-300 ease-in-out backdrop-blur-sm text-sm ${
-                  isSearchVisible ? 'w-56 opacity-100 bg-transparent pl-4' : 'w-0 opacity-0 bg-transparent pl-0'
+                  isSearchVisible ? 'sm:w-56 w-40 opacity-100 bg-transparent pl-4' : 'w-0 opacity-0 bg-transparent pl-0'
                 }`}
               />
               <Button

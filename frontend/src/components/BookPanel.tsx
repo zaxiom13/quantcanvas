@@ -12,7 +12,7 @@ interface BookPanelProps {
   onApplyQuery?: (query: string) => void;
   onViewChange?: (view: string) => void;
   selectedChapter?: Chapter | null;
-  onChapterSelect?: (chapter: Chapter) => void;
+  onChapterSelect?: (chapter: Chapter | null) => void;
   readingPosition?: ReadingPosition | null;
   onPositionChange?: (position: ReadingPosition | null) => void;
 }
@@ -43,12 +43,10 @@ const BookPanel: React.FC<BookPanelProps> = ({
     chapterLoader.loadChapters().then((chs) => {
       if (!mounted) return;
       setChapters(chs);
-      // Prefer explicit selection, else resume position
+      // Prefer explicit selection only; do not auto-open from readingPosition.
+      // Resume reading is available via the button.
       if (selectedChapter) {
         setActiveChapter(selectedChapter);
-      } else if (readingPosition) {
-        const found = chs.find((c) => c.id === readingPosition.chapterId) || null;
-        if (found) setActiveChapter(found);
       }
     });
     return () => {
@@ -127,7 +125,10 @@ const BookPanel: React.FC<BookPanelProps> = ({
               ? readingPosition
               : null
           }
-          onExit={() => setActiveChapter(null)}
+          onExit={() => {
+            setActiveChapter(null);
+            onChapterSelect?.(null);
+          }}
           onViewChange={onViewChange}
         />
       </div>
@@ -137,7 +138,7 @@ const BookPanel: React.FC<BookPanelProps> = ({
   return (
     <div className="h-full flex flex-col overflow-hidden text-[#e5eef2]">
       <CardHeader className="p-3 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-white/10 rounded-md border border-white/10">
               <BookOpen className="h-5 w-5 text-neon-500" />
@@ -147,7 +148,7 @@ const BookPanel: React.FC<BookPanelProps> = ({
               <p className="text-[12px] text-[#e5eef2]/70">All chapters</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             {readingPosition && (
               <Button
                 size="sm"
@@ -182,13 +183,13 @@ const BookPanel: React.FC<BookPanelProps> = ({
               <Bookmark className="h-3 w-3 mr-2" />
               {showBookmarks ? 'Chapters' : 'Bookmarks'}
             </Button>
-            <div className="relative">
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#e5eef2]/50" />
               <Input
                 placeholder="Search chapters..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-[#0b0f10] border-white/10 text-[#e5eef2] placeholder:text-[#e5eef2]/50"
+                className="pl-10 bg-[#0b0f10] border-white/10 text-[#e5eef2] placeholder:text-[#e5eef2]/50 w-full"
               />
             </div>
           </div>

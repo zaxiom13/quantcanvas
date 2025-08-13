@@ -30,6 +30,8 @@ const isDevMode = true;
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [query, setQuery] = useState('');
   const [lastQuery, setLastQuery] = useState('');
+  const [mouseX, setMouseX] = useState<number | undefined>(undefined);
+  const [mouseY, setMouseY] = useState<number | undefined>(undefined);
   
 
   const [activeView, setActiveView] = useState('console');
@@ -208,6 +210,8 @@ const isDevMode = true;
                     onClearConsole={() => {
                       // pass through via ref later if needed
                     }}
+                    mouseX={mouseX}
+                    mouseY={mouseY}
                   />
                 </div>
                 <div className="flex-1 min-h-0">
@@ -224,6 +228,7 @@ const isDevMode = true;
                       isLiveMode={isLiveMode}
                       onToggleMouseMode={toggleMouseMode}
                       onToggleLiveMode={toggleLiveMode}
+                     onMousePositionChange={(x, y) => { setMouseX(x); setMouseY(y); }}
                     onProvideExecutor={(fn) => { executeQueryRef.current = fn; }}
                     />
                   </div>

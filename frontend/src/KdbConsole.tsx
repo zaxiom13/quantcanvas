@@ -8,7 +8,7 @@ import { ResetKdbServer } from '../wailsjs/go/main/App';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse, X, RotateCcw } from 'lucide-react';
+import { BookOpen, Play, Pause, ChevronDown, ChevronUp, Trash2, Mouse, X, RotateCcw, Download } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { StatusBar } from '@/components/StatusBar';
+import { exportJSON, exportCSV, exportText, buildConsoleGroupExport, buildLiveSessionExport, maybeExportCSVFromUnknown } from '@/lib/export';
 
 interface Result {
   type: 'query' | 'response' | 'error' | 'system';
@@ -62,6 +63,7 @@ interface KdbConsoleProps {
   isLiveMode?: boolean;
   onToggleMouseMode?: () => void;
   onToggleLiveMode?: () => void;
+  onMousePositionChange?: (x: number, y: number) => void;
   onProvideExecutor?: (executeFn: (query: string) => void) => void;
 }
 
@@ -78,7 +80,8 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
   isLiveMode = false,
   onToggleMouseMode,
   onToggleLiveMode,
-  onProvideExecutor
+  onProvideExecutor,
+  onMousePositionChange
 }) => {
   const kdbClientRef = useRef<KdbWebSocketClient | null>(null);
   const queryInputRef = useRef<HTMLTextAreaElement>(null);
@@ -345,6 +348,9 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         lastStateUpdateRef.current = now;
         setMouseX(newX);
         setMouseY(newY);
+        if (onMousePositionChange) {
+          onMousePositionChange(newX, newY);
+        }
       }
 
       // If in mouse mode, run throttled queries when movement is significant
@@ -706,6 +712,34 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
       return filtered;
     });
   }, [onVisualData]);
+
+  const exportResultGroup = useCallback((group: ResultGroup) => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    // Export JSON always
+    exportJSON(buildConsoleGroupExport(group), `query-${ts}.json`);
+    // Export CSV if response is tabular
+    if (group.response !== undefined) {
+      maybeExportCSVFromUnknown(group.response, `query-${ts}.csv`);
+    }
+    // Export raw text summary
+    const text = [
+      `Query @ ${group.queryTimestamp}`,
+      group.query,
+      group.error ? `Error @ ${group.errorTimestamp}: ${group.error}` : `Response @ ${group.responseTimestamp}:`,
+      group.error ? '' : (typeof group.response === 'string' ? group.response : JSON.stringify(group.response, null, 2))
+    ].join('\n');
+    exportText(text, `query-${ts}.txt`);
+  }, []);
+
+  const exportSession = useCallback((session: LiveSession) => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    exportJSON(buildLiveSessionExport(session), `session-${session.mode}-${ts}.json`);
+    // If results contain tabular objects, try a flat CSV export of last result
+    const last = session.results.findLast?.((r: any) => r && !r.error && r.result) || session.results[session.results.length - 1];
+    if (last && last.result) {
+      maybeExportCSVFromUnknown(last.result, `session-${session.mode}-${ts}.csv`);
+    }
+  }, []);
 
   const clearAllResultGroups = useCallback(() => {
     setResultGroups([]);
@@ -1418,12 +1452,6 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
             <div className="flex items-center justify-between">
                 <CardTitle className="text-lg flex items-center space-x-2">
                     Console
-                    <span 
-                        className="text-xs text-purple-600 bg-purple-100 px-2 py-1 rounded-full cursor-help"
-                        title="These coordinates are available to use in expressions whenever you like"
-                    >
-                        mouseX:{mouseX.toFixed(3)}, mouseY:{mouseY.toFixed(3)}
-                    </span>
                     {isInputFocused && (
                         <span className="text-xs text-blue bg-blue/10 px-2 py-1 rounded-full animate-pulse">
                             Ready
@@ -1444,6 +1472,37 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                 onMouseEnter={() => setIsConsoleHovered(true)}
                 onMouseLeave={() => setIsConsoleHovered(false)}
             >
+              <div className="px-4 py-2 border-b border-white/10 flex items-center justify-between flex-shrink-0">
+                  <StatusBar isConnected={isConnected} isLoading={isLoading} />
+                  <div className="flex items-center space-x-2">
+                      <Button 
+                          onClick={clearConsole} 
+                          variant="destructive" 
+                          size="sm" 
+                          disabled={!hasDataToClear}
+                          title={hasDataToClear ? "Clear all console data, queries, and reset state (Ctrl+Shift+X)" : "Nothing to clear"}
+                      >
+                          <Trash2 className="h-3 w-3 mr-1" />
+                          Clear Console
+                      </Button>
+                      {isConnected ? (
+                          <Button onClick={handleDisconnect} variant="secondary" size="sm">Disconnect</Button>
+                      ) : (
+                          <Button 
+                              onClick={() => {
+                                  handleConnect();
+                                  // Focus input after connection attempt
+                                  setTimeout(() => focusQueryInput(), 100);
+                              }} 
+                              variant="secondary" 
+                              size="sm" 
+                              disabled={isLoading}
+                          >
+                              {isLoading ? "Connecting..." : "Connect"}
+                          </Button>
+                      )}
+                  </div>
+              </div>
               <div ref={resultsRef} className="flex-1 p-4 overflow-y-auto font-mono text-sm space-y-4 console-results">
                   {combinedEntries.map((entry) => {
                           if (entry.type === 'result') {
@@ -1542,6 +1601,19 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                               >
                                                   <X className="h-3 w-3" />
                                               </Button>
+                                               <Button
+                                                   onClick={(e) => {
+                                                       e.stopPropagation();
+                                                       exportResultGroup(group);
+                                                   }}
+                                                   variant="outline"
+                                                   size="sm"
+                                                   className="h-6 px-2 py-0"
+                                                   title="Export result"
+                                                   disabled={group.response === undefined && !group.error}
+                                               >
+                                                   <Download className="h-3 w-3" />
+                                               </Button>
                                               {group.isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                                           </div>
                                       </div>
@@ -1652,6 +1724,19 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                                               >
                                                   <X className="h-3 w-3" />
                                               </Button>
+                                               <Button
+                                                   onClick={(e) => {
+                                                       e.stopPropagation();
+                                                       exportSession(session);
+                                                   }}
+                                                   variant="outline"
+                                                   size="sm"
+                                                   className="h-6 px-2 py-0"
+                                                   title="Export session"
+                                                   disabled={session.results.length === 0}
+                                               >
+                                                   <Download className="h-3 w-3" />
+                                               </Button>
                                               {session.isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                                           </div>
                                       </div>
@@ -1703,7 +1788,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                         onFocus={handleInputFocus}
                         onBlur={handleInputBlur}
                         placeholder={isConnected ? "Enter kdb+ query... (Enter to run)" : "Not connected. Click Connect."}
-                        className={`flex-1 bg-[#0b0f10] border-white/15 focus:ring-neon-500/60 focus:border-neon-500/60 text-[#e5eef2] placeholder:text-[#e5eef2]/60 resize-none font-mono text-sm transition-all duration-200 ${isInputFocused ? 'shadow-[0_0_20px_rgba(57,255,20,0.15)]' : ''}`}
+                        className={`flex-1 bg-[#0b0f10] border-white/15 focus:ring-neon-500/60 focus:border-neon-500/60 text-[#e5eef2] placeholder:text-[#e5eef2]/60 resize-none font-mono text-sm transition-all duration-200 min-h-9 h-9 overflow-x-hidden ${query.trim().length === 0 ? 'overflow-y-hidden' : 'overflow-y-auto'} ${isInputFocused ? 'shadow-[0_0_20px_rgba(57,255,20,0.15)]' : ''}`}
                         disabled={!isConnected || isLoading}
                     />
                     <Button
@@ -1720,37 +1805,7 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                   </div>
               </div>
 
-              <div className="px-4 py-2 border-t border-white/10 flex items-center justify-between flex-shrink-0">
-                  <StatusBar isConnected={isConnected} isLoading={isLoading} />
-                  <div className="flex items-center space-x-2">
-                      <Button 
-                          onClick={clearConsole} 
-                          variant="destructive" 
-                          size="sm" 
-                          disabled={!hasDataToClear}
-                          title={hasDataToClear ? "Clear all console data, queries, and reset state (Ctrl+Shift+X)" : "Nothing to clear"}
-                      >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Clear Console
-                      </Button>
-                      {isConnected ? (
-                          <Button onClick={handleDisconnect} variant="secondary" size="sm">Disconnect</Button>
-                      ) : (
-                          <Button 
-                              onClick={() => {
-                                  handleConnect();
-                                  // Focus input after connection attempt
-                                  setTimeout(() => focusQueryInput(), 100);
-                              }} 
-                              variant="secondary" 
-                              size="sm" 
-                              disabled={isLoading}
-                          >
-                              {isLoading ? "Connecting..." : "Connect"}
-                          </Button>
-                      )}
-                  </div>
-              </div>
+              
             </div>
         </CardContent>
     </Card>

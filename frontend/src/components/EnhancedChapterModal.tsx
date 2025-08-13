@@ -144,9 +144,9 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
             }
 
             if (elementToScrollTo) {
-                elementToScrollTo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                elementToScrollTo.scrollIntoView({ behavior: 'auto', block: 'start' });
             }
-        }, 150); // Increased delay slightly
+        }, 0);
       }
     }
 }, [isOpen, chapter, granularChapters, initialPosition]);

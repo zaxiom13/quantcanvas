@@ -4,6 +4,7 @@ import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { generateKdbExamples } from '@/lib/example-generator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { exportJSON, exportCSV } from '@/lib/export';
 
 const referenceData = generateKdbExamples();
 
@@ -35,6 +36,17 @@ export const ReferencePanel: React.FC = React.memo(() => {
     return filtered;
   }, [searchTerm, selectedCategory]);
 
+  const handleExport = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    exportJSON(filteredData, `reference-${selectedCategory}-${ts}.json`);
+    // Flatten to CSV with columns: category, q, doc
+    const rows: Array<Record<string, any>> = [];
+    filteredData.forEach((section) => {
+      section.items.forEach((item) => rows.push({ category: section.category, q: item.q, doc: item.doc }));
+    });
+    if (rows.length > 0) exportCSV(rows, `reference-${selectedCategory}-${ts}.csv`);
+  };
+
   const clearSearch = () => {
     setSearchTerm('');
     setSelectedCategory('all');
@@ -52,6 +64,7 @@ export const ReferencePanel: React.FC = React.memo(() => {
             <p className="text-[12px] text-[#e5eef2]/70">Executable q examples and quick reference</p>
           </div>
         </div>
+        <Button variant="outline" size="sm" onClick={handleExport} className="hover:border-neon-500/40 hover:bg-white/5" disabled={filteredData.length === 0}>Export</Button>
       </div>
 
       <div className="flex-shrink-0 p-3 pb-2 border-b border-white/10 bg-white/5">

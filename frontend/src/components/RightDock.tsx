@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
   BookOpen, 
-  LayoutGrid, 
   Settings,
   BarChart3
 } from 'lucide-react';
@@ -62,7 +61,7 @@ export const RightDock: React.FC<RightDockProps> = React.memo(({
   readingPosition,
   onPositionChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'guide' | 'reference' | 'book' | 'chapter' | 'visual' | 'settings' | 'layout'>('guide');
+  const [activeTab, setActiveTab] = useState<'guide' | 'reference' | 'book' | 'chapter' | 'visual' | 'settings'>('guide');
   const [isExpanded, setIsExpanded] = useState(true);
   
 
@@ -122,15 +121,7 @@ export const RightDock: React.FC<RightDockProps> = React.memo(({
             >
               <Settings className="h-3 w-3 mr-1" /> Settings
             </Button>
-            <Button
-              variant={activeTab === 'layout' ? 'secondary' : 'ghost'}
-              size="sm"
-              className={`text-xs px-2 ${activeTab === 'layout' ? 'border-neon-500/40' : ''}`}
-              onClick={() => setActiveTab('layout')}
-              title="Workspace"
-            >
-              <LayoutGrid className="h-3 w-3 mr-1" /> Layout
-            </Button>
+            {/* Layout tab removed */}
           </div>
         </div>
       </CardHeader>
@@ -169,9 +160,7 @@ export const RightDock: React.FC<RightDockProps> = React.memo(({
             {activeTab === 'settings' && (
               <SettingsPanel />
             )}
-            {activeTab === 'layout' && (
-              <div className="h-full flex items-center justify-center text-[#e5eef2]/60">Coming soon: custom workspace widgets</div>
-            )}
+            {/* Layout content removed */}
           </Suspense>
         </div>
       </CardContent>
