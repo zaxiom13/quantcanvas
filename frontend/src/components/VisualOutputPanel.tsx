@@ -98,13 +98,12 @@ const ChartView = React.memo(({ data, chartRef }: { data: number[]; chartRef: Re
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    backgroundColor: '#0b0f10', // Dark background for export
     plugins: { 
       legend: { display: false }, 
       title: { 
         display: true, 
         text: `Array of ${data.length} values`, 
-        font: { size: 14, color: '#e5eef2' },
+        font: { size: 14 },
         color: '#e5eef2'
       } 
     },

@@ -144,7 +144,6 @@ const ChartView = ({ data, chartRef }: { data: number[]; chartRef: React.Mutable
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    backgroundColor: '#0b0f10', // Dark background for export
     plugins: {
       legend: {
         display: false, // Hide legend for simple arrays
@@ -154,7 +153,6 @@ const ChartView = ({ data, chartRef }: { data: number[]; chartRef: React.Mutable
         text: `Array of ${data.length} values`,
         font: {
           size: 14,
-          color: '#e5eef2'
         },
         color: '#e5eef2'
       },

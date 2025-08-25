@@ -82,16 +82,31 @@ export const exportHTML = (htmlString: string, filename = 'content.html') => {
   downloadString(htmlString, filename, 'text/html');
 };
 
-export const exportCanvasPNG = async (canvas: HTMLCanvasElement, filename = 'image.png') => {
-  if ((canvas as any).toBlob) {
+export const exportCanvasPNG = async (canvas: HTMLCanvasElement, filename = 'image.png', backgroundColor = '#0b0f10') => {
+  // Create a new canvas with background color
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = canvas.width;
+  exportCanvas.height = canvas.height;
+  const ctx = exportCanvas.getContext('2d');
+  
+  if (ctx) {
+    // Fill with background color
+    ctx.fillStyle = backgroundColor;
+    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    
+    // Draw the original canvas on top
+    ctx.drawImage(canvas, 0, 0);
+  }
+  
+  if ((exportCanvas as any).toBlob) {
     return new Promise<void>((resolve) => {
-      (canvas as HTMLCanvasElement).toBlob((blob) => {
+      (exportCanvas as HTMLCanvasElement).toBlob((blob) => {
         if (blob) downloadBlob(blob, filename);
         resolve();
       });
     });
   }
-  const dataUrl = canvas.toDataURL('image/png');
+  const dataUrl = exportCanvas.toDataURL('image/png');
   const res = await fetch(dataUrl);
   const blob = await res.blob();
   downloadBlob(blob, filename);
@@ -111,7 +126,7 @@ export const exportChartPNG = async (chartOrCanvas: any, filename = 'chart.png')
   // Wait a bit for the update to complete
   await new Promise(resolve => setTimeout(resolve, 50));
   
-  await exportCanvasPNG(canvas, filename);
+  await exportCanvasPNG(canvas, filename, '#0b0f10');
 };
 
 export const buildConsoleGroupExport = (group: {
