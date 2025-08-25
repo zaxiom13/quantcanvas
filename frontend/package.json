@@ -17,6 +17,7 @@
     "@radix-ui/react-switch": "^1.2.5",
     "@tailwindcss/typography": "^0.5.16",
     "@tanstack/react-table": "^8.10.0",
+    "@tanstack/react-virtual": "3.13.12",
     "chart.js": "^4.4.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",

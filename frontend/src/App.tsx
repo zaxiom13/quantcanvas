@@ -8,20 +8,9 @@ import { CommandBar } from '@/components/CommandBar';
 import { saveStateManager, ReadingPosition, Chapter } from '@/lib/saveState';
 import { chapterLoader } from '@/lib/chapterLoader';
 
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 
-interface GranularChapter {
-  id: string;
-  number: string;
-  title: string;
-  fullTitle: string;
-  content: string;
-  granularType: 'chapter' | 'subsection';
-  parentChapter?: string;
-  parentNumber?: string;
-  type?: 'h2' | 'h3';
-  level?: number;
-}
+// Removed local granular chapter typing and fetching; shared loader is used within consumers
 
 function App() {
 const isDevMode = true;
@@ -38,25 +27,10 @@ const isDevMode = true;
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [readingPosition, setReadingPosition] = useState<ReadingPosition | null>(null);
-  const [granularChapters, setGranularChapters] = useState<GranularChapter[]>([]);
   const setQueryRef = useRef<((query: string) => void) | null>(null);
   const executeQueryRef = useRef<((query: string) => void) | null>(null);
 
-  // Load granular chapters data
-  useEffect(() => {
-    const loadGranularChapters = async () => {
-      try {
-        const response = await fetch('/src/data/chapters_granular.json');
-        const data = await response.json();
-        setGranularChapters(data);
-        console.log('Loaded granular chapters for header:', data.length, 'chapters');
-      } catch (error) {
-        console.error('Failed to load granular chapters for header:', error);
-      }
-    };
-    
-    loadGranularChapters();
-  }, []);
+  // Removed granular chapters fetch; not needed for header anymore
 
   // Load save state on component mount
   useEffect(() => {
@@ -176,23 +150,16 @@ const isDevMode = true;
   };
 
   // Update save state when reading position changes
-  const handleReadingPositionChange = (position: ReadingPosition | null) => {
+  const handleReadingPositionChange = useCallback((position: ReadingPosition | null) => {
     setReadingPosition(position); // Update local state
     saveStateManager.updateReadingPosition(position);
-  };
+  }, []);
 
   return (
     <div className="h-screen bg-offBlack text-offBlack flex flex-col overflow-hidden">
       {/* Enhanced Header */}
 <Header 
-        isDevMode={isDevMode} 
-        connectionStatus={connectionStatus}
         activeView={activeView}
-        hasReadingPosition={!!readingPosition}
-        onResumeReading={resumeReading}
-        readingChapterTitle={selectedChapter?.title}
-        readingPosition={readingPosition}
-        granularChapters={granularChapters}
       />
       
       {/* Main Console Layout */}

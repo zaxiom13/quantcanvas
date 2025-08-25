@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, Component, ReactNode } from 'react';
 import { BarChart3, Mouse, Play, Pause, Download, FileJson, FileSpreadsheet, Image as ImageIcon, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
@@ -15,6 +15,38 @@ import {
 import { exportCSV, exportJSON, exportCanvasPNG, exportChartPNG, exportText, maybeExportCSVFromUnknown } from '@/lib/export';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+
+// Error boundary component to catch rendering errors in table
+class TableErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Table rendering error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-[#0b0f10] rounded-md border border-white/10">
+          <div className="text-center text-[#e5eef2] p-4">
+            <p className="text-red-400 mb-2">Table rendering error</p>
+            <p className="text-sm opacity-70">Data structure may be changing too rapidly</p>
+            <p className="text-xs opacity-50 mt-2">Try pausing mouse mode or using a simpler query</p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface VisualOutputPanelProps {
   data: any;
@@ -154,37 +186,73 @@ const TextView = React.memo(({ data }: { data: any }) => {
 });
 
 const TableView = React.memo(({ data, columns }: { data: any[]; columns: any[] }) => {
-  const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
-  return (
-    <div className="w-full h-full overflow-auto bg-[#0b0f10] rounded-md border border-white/10 shadow-crt">
-      <div className="h-full overflow-auto">
-        <table className="w-full text-left border-collapse text-[#e5eef2]">
-          <thead className="sticky top-0 bg-white/5">
-            {table.getHeaderGroups().map((headerGroup: any) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header: any) => (
-                  <th key={header.id} className="p-3 border-b border-white/10 font-bold">
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row: any, index: number) => (
-              <tr key={row.id} className={`hover:bg-white/5 ${index % 2 === 0 ? 'bg-transparent' : 'bg-white/5'}`}>
-                {row.getVisibleCells().map((cell: any) => (
-                  <td key={cell.id} className="p-3 border-b border-white/10">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  // Add safety checks for data and columns
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-[#0b0f10] rounded-md border border-white/10">
+        <div className="text-center text-[#e5eef2]/60 p-4">
+          <p>No table data available</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+
+  if (!columns || !Array.isArray(columns) || columns.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-[#0b0f10] rounded-md border border-white/10">
+        <div className="text-center text-[#e5eef2]/60 p-4">
+          <p>No table columns defined</p>
+        </div>
+      </div>
+    );
+  }
+
+  try {
+    const table = useReactTable({ data, columns, getCoreRowModel: getCoreRowModel() });
+    
+    return (
+      <TableErrorBoundary>
+        <div className="w-full h-full overflow-auto bg-[#0b0f10] rounded-md border border-white/10 shadow-crt">
+          <div className="h-full overflow-auto">
+            <table className="w-full text-left border-collapse text-[#e5eef2]">
+              <thead className="sticky top-0 bg-white/5">
+                {table.getHeaderGroups().map((headerGroup: any) => (
+                  <tr key={headerGroup.id}>
+                    {headerGroup.headers.map((header: any) => (
+                      <th key={header.id} className="p-3 border-b border-white/10 font-bold">
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {table.getRowModel().rows.map((row: any, index: number) => (
+                  <tr key={row.id} className={`hover:bg-white/5 ${index % 2 === 0 ? 'bg-transparent' : 'bg-white/5'}`}>
+                    {row.getVisibleCells().map((cell: any) => (
+                      <td key={cell.id} className="p-3 border-b border-white/10">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </TableErrorBoundary>
+    );
+  } catch (error) {
+    console.error('Table creation error:', error);
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-[#0b0f10] rounded-md border border-white/10">
+        <div className="text-center text-[#e5eef2] p-4">
+          <p className="text-red-400 mb-2">Table creation failed</p>
+          <p className="text-sm opacity-70">Invalid data structure for table rendering</p>
+        </div>
+      </div>
+    );
+  }
 });
 
 const Placeholder = () => (
@@ -205,7 +273,7 @@ const Placeholder = () => (
   </div>
 );
 
-export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
+export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = React.memo(({
   data,
   isMouseMode,
   isLiveMode,
@@ -238,21 +306,70 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
   }, [data]);
 
   const { tableData, columns } = useMemo(() => {
-    let tableData: any[] = [];
-    let columns: any[] = [];
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
-      const keys = Object.keys(data[0]);
-      columns = keys.map((key) => ({ accessorKey: key, header: key }));
-      tableData = data;
-    } else if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-      const keys = Object.keys(data);
-      if (keys.length > 0 && Array.isArray(data[keys[0]])) {
-        columns = keys.map((key) => ({ accessorKey: key, header: key }));
-        const numRows = data[keys[0]].length;
-        tableData = Array.from({ length: numRows }, (_, i) => Object.fromEntries(keys.map((k) => [k, (data as any)[k][i]])));
+    try {
+      let tableData: any[] = [];
+      let columns: any[] = [];
+      
+      // Enhanced safety checks and data validation
+      if (!data) {
+        return { tableData, columns };
       }
+
+      // Handle array of objects (most common table format)
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
+        // Ensure all objects have consistent keys to avoid column mismatch
+        const firstItem = data[0];
+        const keys = Object.keys(firstItem);
+        
+        // Validate that all rows have the same structure
+        const allRowsConsistent = data.every(row => 
+          row && typeof row === 'object' && !Array.isArray(row) && 
+          keys.every(key => key in row)
+        );
+        
+        if (allRowsConsistent && keys.length > 0) {
+          columns = keys.map((key) => ({ 
+            accessorKey: key, 
+            header: key,
+            // Add stable key for React
+            id: key
+          }));
+          tableData = data;
+        }
+      } 
+      // Handle object with array properties (column-based format)
+      else if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+        const keys = Object.keys(data);
+        if (keys.length > 0) {
+          // Check if all values are arrays of the same length
+          const firstKey = keys[0];
+          const firstArray = data[firstKey];
+          
+          if (Array.isArray(firstArray)) {
+            const arrayLength = firstArray.length;
+            const allArraysSameLength = keys.every(key => 
+              Array.isArray(data[key]) && data[key].length === arrayLength
+            );
+            
+            if (allArraysSameLength && arrayLength > 0) {
+              columns = keys.map((key) => ({ 
+                accessorKey: key, 
+                header: key,
+                id: key
+              }));
+              tableData = Array.from({ length: arrayLength }, (_, i) => 
+                Object.fromEntries(keys.map((k) => [k, (data as any)[k][i]]))
+              );
+            }
+          }
+        }
+      }
+      
+      return { tableData, columns };
+    } catch (error) {
+      console.error('Error processing table data:', error);
+      return { tableData: [], columns: [] };
     }
-    return { tableData, columns };
   }, [data]);
 
   const chartRef = useRef<any>(null);
@@ -374,7 +491,7 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default VisualOutputPanel;
 
