@@ -102,6 +102,15 @@ export const exportChartPNG = async (chartOrCanvas: any, filename = 'chart.png')
   const canvas: HTMLCanvasElement | null = 
     chartOrCanvas?.canvas || chartOrCanvas?.canvasEl || chartOrCanvas || null;
   if (!canvas) return;
+  
+  // Ensure the chart is fully rendered
+  if (chartOrCanvas?.update) {
+    chartOrCanvas.update('none'); // Update without animation
+  }
+  
+  // Wait a bit for the update to complete
+  await new Promise(resolve => setTimeout(resolve, 50));
+  
   await exportCanvasPNG(canvas, filename);
 };
 

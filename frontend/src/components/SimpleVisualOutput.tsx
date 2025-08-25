@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { BarChart3, Download } from 'lucide-react';
+import { BarChart3, Download, Image as ImageIcon, FileJson, FileSpreadsheet, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
@@ -144,6 +144,7 @@ const ChartView = ({ data, chartRef }: { data: number[]; chartRef: React.Mutable
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    backgroundColor: '#0b0f10', // Dark background for export
     plugins: {
       legend: {
         display: false, // Hide legend for simple arrays
@@ -153,7 +154,9 @@ const ChartView = ({ data, chartRef }: { data: number[]; chartRef: React.Mutable
         text: `Array of ${data.length} values`,
         font: {
           size: 14,
+          color: '#e5eef2'
         },
+        color: '#e5eef2'
       },
       tooltip: {
         callbacks: {
@@ -166,15 +169,17 @@ const ChartView = ({ data, chartRef }: { data: number[]; chartRef: React.Mutable
       y: {
         beginAtZero: false,
         grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
+          color: 'rgba(255, 255, 255, 0.1)',
         },
+        ticks: { color: '#e5eef2' }
       },
       x: {
         grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
+          color: 'rgba(255, 255, 255, 0.1)',
         },
         ticks: {
           maxTicksLimit: Math.min(20, data.length), // Limit number of x-axis labels
+          color: '#e5eef2'
         },
       },
     },
@@ -357,45 +362,60 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
   const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const handleExport = async () => {
+  const handleExportPNG = async () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (currentView === 'chart' && Array.isArray(data)) {
+      // Wait a bit for chart to be fully rendered
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (chartRef.current) {
+        // Ensure chart is ready before export
+        if (chartRef.current.canvas) {
+          await exportChartPNG(chartRef.current, `chart-${ts}.png`);
+        }
+      } else if (chartContainerRef.current) {
+        const canvas = chartContainerRef.current.querySelector('canvas');
+        if (canvas) {
+          await exportCanvasPNG(canvas as HTMLCanvasElement, `chart-${ts}.png`);
+        }
+      }
+    } else if (currentView === 'image') {
+      if (imageCanvasRef.current) {
+        await exportCanvasPNG(imageCanvasRef.current, `image-${ts}.png`);
+      }
+    }
+  };
+
+  const handleExportJSON = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (currentView === 'table' && tableData.length > 0) {
+      exportJSON(data, `table-${ts}.json`);
+    } else if (currentView === 'chart' && Array.isArray(data)) {
+      exportJSON(data, `chart-${ts}.json`);
+    } else if (currentView === 'image' && Array.isArray(data)) {
+      exportJSON(data, `image-data-${ts}.json`);
+    } else if (typeof data === 'string') {
+      exportJSON(data, `text-${ts}.json`);
+    } else {
+      exportJSON(data, `data-${ts}.json`);
+    }
+  };
+
+  const handleExportCSV = () => {
     const ts = new Date().toISOString().replace(/[:]/g, '-');
     if (currentView === 'table' && tableData.length > 0) {
       if (!maybeExportCSVFromUnknown(data, `table-${ts}.csv`)) {
         exportCSV(tableData, `table-${ts}.csv`);
       }
-      exportJSON(data, `table-${ts}.json`);
-      return;
-    }
-    if (currentView === 'chart' && Array.isArray(data)) {
-      let didPng = false;
-      if (chartRef.current) {
-        await exportChartPNG(chartRef.current, `chart-${ts}.png`);
-        didPng = true;
-      }
-      if (!didPng && chartContainerRef.current) {
-        const canvas = chartContainerRef.current.querySelector('canvas');
-        if (canvas) {
-          await exportCanvasPNG(canvas as HTMLCanvasElement, `chart-${ts}.png`);
-          didPng = true;
-        }
-      }
-      exportJSON(data, `chart-${ts}.json`);
+    } else if (currentView === 'chart' && Array.isArray(data)) {
       exportCSV({ values: data }, `chart-${ts}.csv`);
-      return;
     }
-    if (currentView === 'image') {
-      if (imageCanvasRef.current) {
-        await exportCanvasPNG(imageCanvasRef.current, `image-${ts}.png`);
-      }
-      if (Array.isArray(data)) {
-        exportJSON(data, `image-data-${ts}.json`);
-      }
-      return;
-    }
+  };
+
+  const handleExportText = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
     if (typeof data === 'string') {
       exportText(data, `text-${ts}.txt`);
-    } else {
-      exportJSON(data, `data-${ts}.json`);
     }
   };
 
@@ -427,9 +447,27 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
               <span className="text-[#e5eef2]">Visual Output</span>
             </div>
             <div className="ml-auto">
-              <Button variant="outline" size="sm" onClick={handleExport} title="Export" disabled={!data}>
-                <Download className="h-4 w-4" />
-              </Button>
+              {/* Export buttons */}
+              <div className="flex items-center space-x-1">
+                {(currentView === 'chart' || currentView === 'image') && (
+                  <Button onClick={handleExportPNG} variant="outline" size="sm" title="Export as PNG" disabled={!data}>
+                    <ImageIcon className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button onClick={handleExportJSON} variant="outline" size="sm" title="Export as JSON" disabled={!data}>
+                  <FileJson className="h-4 w-4" />
+                </Button>
+                {(currentView === 'table' || currentView === 'chart') && (
+                  <Button onClick={handleExportCSV} variant="outline" size="sm" title="Export as CSV" disabled={!data}>
+                    <FileSpreadsheet className="h-4 w-4" />
+                  </Button>
+                )}
+                {typeof data === 'string' && (
+                  <Button onClick={handleExportText} variant="outline" size="sm" title="Export as Text" disabled={!data}>
+                    <FileText className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
             {/* Mouse and Live buttons removed - now only available in Visual Output Panel in right dock */}
           </DialogTitle>
