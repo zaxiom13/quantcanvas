@@ -80,7 +80,10 @@ const ImageCanvas: React.FC<{ data: any; setCanvasEl?: (el: HTMLCanvasElement | 
   }, [data]);
   return (
     <div className="h-full flex justify-center items-center bg-offWhite overflow-hidden p-1">
-      <canvas ref={(el) => { canvasRef.current = el; setCanvasEl?.(el); }} className="max-w-full max-h-full w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
+      <canvas ref={(el) => { 
+        (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = el;
+        setCanvasEl?.(el);
+      }} className="max-w-full max-h-full w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
     </div>
   );
 });

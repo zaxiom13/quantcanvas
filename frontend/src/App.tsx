@@ -163,9 +163,11 @@ const isDevMode = true;
 
 
 
-  const handleChapterSelect = (chapter: Chapter) => {
+  const handleChapterSelect = (chapter: Chapter | null) => {
     setSelectedChapter(chapter);
-    saveStateManager.updateSelectedChapter(chapter);
+    if (chapter) {
+      saveStateManager.updateSelectedChapter(chapter);
+    }
     // No longer opening modal - chapter reading happens in right dock
   };
 

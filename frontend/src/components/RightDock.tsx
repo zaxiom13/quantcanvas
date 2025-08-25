@@ -32,7 +32,7 @@ interface RightDockProps {
   onApplyQuery?: (query: string) => void;
   activeView?: string;
   onViewChange?: (view: string) => void;
-  onChapterSelect?: (chapter: Chapter) => void;
+  onChapterSelect?: (chapter: Chapter | null) => void;
   selectedChapter?: Chapter | null;
   visualData?: any;
   isMouseMode?: boolean;
