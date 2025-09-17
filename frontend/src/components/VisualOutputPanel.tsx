@@ -58,7 +58,7 @@ interface VisualOutputPanelProps {
   lastQuery?: string;
 }
 
-const ImageCanvas: React.FC<{ data: any }> = React.memo(({ data }) => {
+const ImageCanvas: React.FC<{ data: any; setCanvasEl?: (el: HTMLCanvasElement | null) => void }> = React.memo(({ data, setCanvasEl }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isGrayscaleMatrix = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((row) => Array.isArray(row) && row.every((v) => typeof v === 'number'));
   const isColorMatrix = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((row) => Array.isArray(row) && row.every((pix) => Array.isArray(pix) && (pix.length === 3 || pix.length === 4)));
@@ -112,7 +112,7 @@ const ImageCanvas: React.FC<{ data: any }> = React.memo(({ data }) => {
   }, [data]);
   return (
     <div className="h-full flex justify-center items-center bg-offWhite overflow-hidden p-1">
-      <canvas ref={(el) => { 
+      <canvas ref={(el: HTMLCanvasElement | null) => { 
         (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = el;
         setCanvasEl?.(el);
       }} className="max-w-full max-h-full w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
@@ -477,7 +477,7 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = React.memo(({
         {!data ? (
           <Placeholder />
         ) : currentView === 'image' ? (
-          <ImageCanvas data={data} setCanvasEl={(el) => { imageCanvasRef.current = el; }} />
+          <ImageCanvas data={data} setCanvasEl={(el: HTMLCanvasElement | null) => { imageCanvasRef.current = el; }} />
         ) : currentView === 'chart' ? (
           <ChartView data={data as number[]} />
         ) : currentView === 'table' ? (

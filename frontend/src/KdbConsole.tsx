@@ -18,6 +18,87 @@ import {
 import { StatusBar } from '@/components/StatusBar';
 import { exportJSON, exportCSV, exportText, buildConsoleGroupExport, buildLiveSessionExport, maybeExportCSVFromUnknown } from '@/lib/export';
 
+const COLLAPSED_PREVIEW_CHAR_LIMIT = 320;
+const COLLAPSED_PREVIEW_LINE_LIMIT = 8;
+const AUTO_EXPAND_CHAR_LIMIT = 240;
+const AUTO_EXPAND_LINE_LIMIT = 6;
+
+const coercePreviewString = (value: any, charGuard = 800): string => {
+  if (value === null || value === undefined) {
+    return String(value);
+  }
+  if (typeof value === 'string') {
+    return value.length > charGuard ? value.slice(0, charGuard) : value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '[]';
+    }
+    const compact = value.map((item) => {
+      if (item === null || item === undefined) {
+        return String(item);
+      }
+      if (typeof item === 'object') {
+        try {
+          const json = JSON.stringify(item);
+          return json.length > 96 ? json.slice(0, 96) + ' ...' : json;
+        } catch {
+          return '[object]';
+        }
+      }
+      return String(item);
+    }).join(', ');
+    return compact.length > charGuard ? compact.slice(0, charGuard) : compact;
+  }
+  try {
+    const json = JSON.stringify(value, null, 2);
+    if (!json) {
+      return String(value);
+    }
+    return json.length > charGuard ? json.slice(0, charGuard) : json;
+  } catch {
+    return String(value);
+  }
+};
+
+const collapseText = (text: string, charLimit = COLLAPSED_PREVIEW_CHAR_LIMIT, lineLimit = COLLAPSED_PREVIEW_LINE_LIMIT) => {
+  const lines = text.split(/\r?\n/);
+  let truncated = false;
+  if (lines.length > lineLimit) {
+    truncated = true;
+  }
+  const limitedLines = lines.slice(0, lineLimit);
+  let output = limitedLines.join('\n');
+  if (output.length > charLimit) {
+    output = output.slice(0, charLimit);
+    truncated = true;
+  }
+  if (truncated) {
+    output = output.trimEnd();
+    if (!output.endsWith(' ...')) {
+      output += ' ...';
+    }
+  }
+  return { text: output, truncated, totalLines: lines.length };
+};
+
+const shouldAutoExpandResultPayload = (value: any): boolean => {
+  const preview = coercePreviewString(value);
+  const lines = preview.split(/\r?\n/);
+  return preview.trim().length <= AUTO_EXPAND_CHAR_LIMIT && lines.length <= AUTO_EXPAND_LINE_LIMIT;
+};
+
+const shouldAutoExpandErrorMessage = (message: string): boolean => {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return true;
+  }
+  const lines = trimmed.split(/\r?\n/);
+  return trimmed.length <= AUTO_EXPAND_CHAR_LIMIT || lines.length <= 3;
+};
 interface Result {
   type: 'query' | 'response' | 'error' | 'system';
   content: any;
@@ -218,9 +299,11 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
           originalQuery: query.trim(),
           finalQuery: finalQuery
         });
+        const formattedError = `KDB+ Error: ${errorMessage}`;
+        const expandError = shouldAutoExpandErrorMessage(formattedError);
         setResultGroups(prev => prev.map(group => 
           group.id === groupId 
-            ? { ...group, error: `KDB+ Error: ${errorMessage}`, errorTimestamp: responseTimestamp }
+            ? { ...group, error: formattedError, errorTimestamp: responseTimestamp, isExpanded: expandError ? true : group.isExpanded }
             : group
         ));
       } else {
@@ -234,9 +317,10 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
           originalQuery: query.trim()
         });
         
+        const expandResult = shouldAutoExpandResultPayload(result);
         setResultGroups(prev => prev.map(group => 
           group.id === groupId 
-            ? { ...group, response: result, responseTimestamp }
+            ? { ...group, response: result, responseTimestamp, isExpanded: expandResult ? true : group.isExpanded }
             : group
         ));
         
@@ -263,9 +347,11 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         });
         
         // Update the result group with the error
+        const formattedError = `Query failed: ${errorMessage}`;
+        const expandError = shouldAutoExpandErrorMessage(formattedError);
         setResultGroups(prev => prev.map(group => 
           group.id === groupId 
-            ? { ...group, error: `Query failed: ${errorMessage}`, errorTimestamp }
+            ? { ...group, error: formattedError, errorTimestamp, isExpanded: expandError ? true : group.isExpanded }
             : group
         ));
     } finally {
@@ -1524,130 +1610,148 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
                           } else if (entry.type === 'resultGroup') {
                               // Query/Response group
                               const group = entry.data as ResultGroup;
+                              const queryPreview = collapseText(group.query || '', 280, 6);
+                              const responsePreview = group.response !== undefined ? collapseText(formatResult(group.response)) : null;
+                              const errorPreview = group.error ? collapseText(group.error, 320, 8) : null;
+                              const showExpandHint = !group.isExpanded && (queryPreview.truncated || (responsePreview && responsePreview.truncated) || (errorPreview && errorPreview.truncated));
+                              const responseLineInfo = responsePreview ? `${responsePreview.totalLines} line${responsePreview.totalLines === 1 ? '' : 's'}` : null;
                               return (
-                                  <div key={entry.key} className="border border-white/10 rounded-md p-3 bg-white/5">
-                                      <div 
-                                          className="flex items-center justify-between cursor-pointer hover:bg-offBlack/10 rounded p-2 -m-2"
-                                          onClick={() => toggleResultGroupExpansion(group.id)}
-                                      >
-                                          <div className="flex-1">
-                                              <div className="flex items-center space-x-2">
-                                                  <span className="px-2 py-1 rounded text-[10px] font-semibold bg-white/10 text-neon-500 border border-neon-500/40">
+                                  <div key={entry.key} className="relative overflow-hidden rounded-xl border border-[#1b2636] bg-[#03070f]/95 shadow-[0_18px_60px_rgba(8,14,28,0.45)]">
+                                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,191,255,0.12),transparent_58%)]" />
+                                      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#5be9ff]/60 to-transparent" />
+                                      <div className="relative">
+                                          <div
+                                              className="flex cursor-pointer flex-col gap-3 px-4 pt-4 pb-3 transition-colors hover:bg-white/5"
+                                              onClick={() => toggleResultGroupExpansion(group.id)}
+                                          >
+                                              <div className="flex flex-wrap items-center gap-3">
+                                                  <span className="rounded border border-neon-500/40 bg-white/10 px-2 py-1 text-[10px] font-semibold tracking-[0.18em] text-neon-500">
                                                       QUERY
                                                   </span>
-                                                  <span className="text-[#e5eef2]/70 text-sm">
+                                                  <span className="text-xs text-[#9ab0c8]">
                                                       {group.queryTimestamp}
                                                   </span>
-                                                  <span className={`text-xs font-medium ${
-                                                      group.error ? 'text-red-500 border border-red-500/40 px-2 py-1 rounded' : 
-                                                      group.response !== undefined ? 'text-neon-500 border border-neon-500/40 px-2 py-1 rounded' : 'text-yellow-400 border border-yellow-400/40 px-2 py-1 rounded'
+                                                  <span className={`rounded border px-2 py-1 text-[10px] font-semibold tracking-[0.2em] ${
+                                                      group.error
+                                                          ? 'border-red-500/40 text-red-400'
+                                                          : group.response !== undefined
+                                                              ? 'border-neon-500/40 text-neon-400'
+                                                              : 'border-yellow-400/40 text-yellow-300'
                                                   }`}>
-                                                      {group.error ? '⚠️ Error' : 
-                                                       group.response !== undefined ? '✅ Success' : '⏳ Pending'}
+                                                      {group.error ? 'ERR' : group.response !== undefined ? 'OK' : 'WAIT'}
                                                   </span>
-                                              </div>
-                                              
-                                              {/* Query Preview */}
-                                              <div className="mt-1 text-xs text-[#e5eef2]/70">
-                                                  <strong>Query:</strong> <code className="bg-white/10 px-1 rounded">{group.query}</code>
-                                              </div>
-                                              
-                                              {/* Summary when collapsed */}
-                                              {!group.isExpanded && group.response !== undefined && (
-                                                  <div className="mt-2 text-xs text-[#e5eef2]/60">
-                                                      <span className="text-neon-500">
-                                                          Result: {(() => {
-                                                              const response = group.response;
-                                                              if (typeof response === 'object') {
-                                                                  if (Array.isArray(response)) {
-                                                                      if (response.length === 0) return 'Empty Array';
-                                                                      if (response.length > 0 && response.every(item => typeof item === 'object' && item !== null && !Array.isArray(item))) {
-                                                                          return `Table (${response.length} rows)`;
-                                                                      }
-                                                                      return `Array(${response.length})`;
-                                                                  } else if (response === null) {
-                                                                      return 'null';
-                                                                  } else {
-                                                                      const keys = Object.keys(response);
-                                                                      if (keys.length === 0) return 'Empty Object';
-                                                                      return `Object (${keys.length} properties)`;
-                                                                  }
-                                                              }
-                                                              const str = String(response);
-                                                              return str.length > 50 ? str.substring(0, 50) + '...' : str;
-                                                          })()}
+                                                  {responseLineInfo && !group.error && (
+                                                      <span className="text-[10px] uppercase tracking-[0.25em] text-[#6f95ce]/70">
+                                                          {responseLineInfo}
                                                       </span>
-                                                      <div className="text-blue-400 mt-1">Click to expand full result</div>
-                                                  </div>
-                                              )}
-                                              
-                                              {!group.isExpanded && group.error && (
-                                                  <div className="mt-2 text-xs text-red-500">
-                                                      <span className="font-medium">⚠️ Error:</span> {group.error.substring(0, 80)}{group.error.length > 80 ? '...' : ''}
-                                                      <div className="text-blue-400 mt-1 font-medium">Click to expand full error details</div>
-                                                  </div>
-                                              )}
-                                          </div>
-                                          <div className="flex items-center space-x-1">
-                                              <Button
-                                                  onClick={(e) => {
-                                                      e.stopPropagation();
-                                                      removeResultGroup(group.id);
-                                                  }}
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  className="text-red-500 hover:text-red-500 h-6 w-6 p-0"
-                                                  title="Remove result group"
-                                              >
-                                                  <X className="h-3 w-3" />
-                                              </Button>
-                                               <Button
-                                                   onClick={(e) => {
-                                                       e.stopPropagation();
-                                                       exportResultGroup(group);
-                                                   }}
-                                                   variant="outline"
-                                                   size="sm"
-                                                   className="h-6 px-2 py-0"
-                                                   title="Export result"
-                                                   disabled={group.response === undefined && !group.error}
-                                               >
-                                                   <Download className="h-3 w-3" />
-                                               </Button>
-                                              {group.isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                                          </div>
-                                      </div>
-                                      
-                                      {/* Expanded Results */}
-                                      {group.isExpanded && (
-                                          <div className="mt-3 ml-4 border-l-2 border-white/10 pl-4">
-                                              <div className="space-y-3">
-                                                  {/* Query */}
-                                                  <div className="flex items-start text-sm">
-                                                      <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{group.queryTimestamp}</span>
-                                                      <span className="mr-2 font-bold text-neon-500">{'>'}</span>
-                                                      <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{group.query}</pre>
-                                                  </div>
-                                                  
-                                                  {/* Response or Error */}
-                                                  {group.response !== undefined && (
-                                                      <div className="flex items-start text-sm">
-                                                          <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{group.responseTimestamp}</span>
-                                                          <span className="mr-2 font-bold text-neon-500">{'<'}</span>
-                                                          <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{formatResult(group.response)}</pre>
-                                                      </div>
                                                   )}
-                                                  
-                                                  {group.error && (
-                                                      <div className="flex items-start text-sm">
-                                                          <span className="text-[#e5eef2]/40 mr-2 select-none text-xs">{group.errorTimestamp}</span>
-                                                          <span className="mr-2 font-bold text-red-500">!</span>
-                                                          <pre className="flex-1 whitespace-pre-wrap break-words text-sm">{group.error}</pre>
-                                                      </div>
-                                                  )}
+                                                  <div className="ml-auto flex items-center gap-1">
+                                                      <Button
+                                                          onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              removeResultGroup(group.id);
+                                                          }}
+                                                          variant="ghost"
+                                                          size="sm"
+                                                          className="h-6 w-6 rounded-full border border-red-400/30 bg-transparent p-0 text-red-300 hover:bg-red-400/10"
+                                                          title="Remove result group"
+                                                      >
+                                                          <X className="h-3 w-3" />
+                                                      </Button>
+                                                      <Button
+                                                          onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              exportResultGroup(group);
+                                                          }}
+                                                          variant="outline"
+                                                          size="sm"
+                                                          className="h-6 w-6 rounded-full border border-[#6bb8ff]/30 bg-transparent p-0 text-[#9ad8ff] hover:bg-[#6bb8ff]/10"
+                                                          title="Export result"
+                                                          disabled={group.response === undefined && !group.error}
+                                                      >
+                                                          <Download className="h-3 w-3" />
+                                                      </Button>
+                                                      {group.isExpanded ? (
+                                                          <ChevronUp className="h-4 w-4 text-[#87b2ff]" />
+                                                      ) : (
+                                                          <ChevronDown className="h-4 w-4 text-[#87b2ff]" />
+                                                      )}
+                                                  </div>
                                               </div>
+                                              {group.query.trim().length > 0 && (
+                                                  <pre className="max-h-32 overflow-hidden rounded-md bg-[#101b2a]/75 px-3 py-2 font-mono text-xs leading-relaxed text-[#f1f7ff]/90 shadow-inner shadow-[#0d2b55]/20">
+                                                      {queryPreview.text}
+                                                  </pre>
+                                              )}
+                                              {group.response === undefined && !group.error && (
+                                                  <div className="flex items-center gap-2 font-mono text-[11px] text-yellow-200/90">
+                                                      <span className="h-2 w-2 animate-pulse rounded-full bg-yellow-200" />
+                                                      <span>Awaiting response...</span>
+                                                  </div>
+                                              )}
+                                              {group.response !== undefined && responsePreview && (
+                                                  <div className="font-mono text-xs text-[#dde8f4]/90">
+                                                      <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-[#7ff8e7]/70">
+                                                          <span className="text-[#7ff8e7]">&lt;</span>
+                                                          <span>Result preview</span>
+                                                          <span className="text-[#6b9be6]/70">{group.responseTimestamp}</span>
+                                                      </div>
+                                                      <pre className="max-h-40 overflow-hidden rounded-md bg-[#08121e]/85 px-3 py-2 leading-relaxed text-[#e5f6ff]/95 shadow-inner shadow-[#0b4c6d]/20">
+                                                          {responsePreview.text}
+                                                      </pre>
+                                                  </div>
+                                              )}
+                                              {group.error && errorPreview && (
+                                                  <div className="font-mono text-xs text-red-200/90">
+                                                      <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-red-300/80">
+                                                          <span className="font-bold">!</span>
+                                                          <span>Error preview</span>
+                                                          <span className="text-red-200/70">{group.errorTimestamp}</span>
+                                                      </div>
+                                                      <pre className="max-h-40 overflow-hidden rounded-md border border-red-500/30 bg-[#2b1218]/80 px-3 py-2 leading-relaxed">
+                                                          {errorPreview.text}
+                                                      </pre>
+                                                  </div>
+                                              )}
+                                              {showExpandHint && (
+                                                  <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.24em] text-[#6fd4ff]/70">
+                                                      <span>Expand for full output</span>
+                                                      <span>DETAIL VIEW</span>
+                                                  </div>
+                                              )}
                                           </div>
-                                      )}
+                                          {group.isExpanded && (
+                                              <div className="border-t border-white/10 bg-[#040a12]/85 px-4 pb-4 pt-3">
+                                                  <div className="space-y-3 font-mono text-sm leading-relaxed text-[#e2f2ff]/90">
+                                                      <div className="flex items-start gap-3">
+                                                          <span className="text-[11px] uppercase tracking-[0.24em] text-[#7fb6ff]/70">
+                                                              {group.queryTimestamp}
+                                                          </span>
+                                                          <span className="font-bold text-neon-500">&gt;</span>
+                                                          <pre className="flex-1 whitespace-pre-wrap break-words">{group.query}</pre>
+                                                      </div>
+                                                      {group.response !== undefined && (
+                                                          <div className="flex items-start gap-3">
+                                                              <span className="text-[11px] uppercase tracking-[0.24em] text-[#7ff8e7]/70">
+                                                                  {group.responseTimestamp}
+                                                              </span>
+                                                              <span className="font-bold text-neon-500">&lt;</span>
+                                                              <pre className="flex-1 whitespace-pre-wrap break-words">{formatResult(group.response)}</pre>
+                                                          </div>
+                                                      )}
+                                                      {group.error && (
+                                                          <div className="flex items-start gap-3">
+                                                              <span className="text-[11px] uppercase tracking-[0.24em] text-red-300/80">
+                                                                  {group.errorTimestamp}
+                                                              </span>
+                                                              <span className="font-bold text-red-500">!</span>
+                                                              <pre className="flex-1 whitespace-pre-wrap break-words">{group.error}</pre>
+                                                          </div>
+                                                      )}
+                                                  </div>
+                                              </div>
+                                          )}
+                                      </div>
                                   </div>
                               );
                           } else {
@@ -1810,4 +1914,4 @@ export const KdbConsole: React.FC<KdbConsoleProps> = ({
         </CardContent>
     </Card>
   );
-}; 
+};
