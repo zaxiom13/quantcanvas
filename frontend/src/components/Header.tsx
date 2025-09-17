@@ -17,15 +17,7 @@ interface GranularChapter {
 }
 
 interface HeaderProps {
-    isDevMode: boolean;
-    onDevModeChange?: (isDevMode: boolean) => void;
-    connectionStatus: 'connected' | 'disconnected' | 'connecting';
     activeView: string;
-    hasReadingPosition?: boolean;
-    onResumeReading?: () => void;
-    readingChapterTitle?: string;
-    readingPosition?: ReadingPosition | null;
-    granularChapters?: GranularChapter[];
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeView }) => {

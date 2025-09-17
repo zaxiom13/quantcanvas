@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { BookOpen, Search, ArrowRight, Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,8 @@ const BookPanel: React.FC<BookPanelProps> = ({
     chapter: string;
     section: string;
   }>>([]);
+
+  const parentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -113,13 +116,24 @@ const BookPanel: React.FC<BookPanelProps> = ({
     );
   }, [sortedChapters, searchTerm]);
 
+  const rowVirtualizer = useVirtualizer({
+    count: showBookmarks ? bookmarks.length : filteredChapters.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 64,
+    overscan: 8,
+  });
+
+  const onPositionChangeStable = useCallback((pos: ReadingPosition | null) => {
+    onPositionChange?.(pos as unknown as ReadingPosition);
+  }, [onPositionChange]);
+
   if (activeChapter) {
     return (
       <div className="h-full overflow-hidden">
         <EnhancedChapterPanel
           chapter={activeChapter}
           onApplyQuery={onApplyQuery}
-          onPositionChange={(pos) => onPositionChange?.(pos as unknown as ReadingPosition)}
+          onPositionChange={onPositionChangeStable}
           initialPosition={
             readingPosition && readingPosition.chapterId === activeChapter.id
               ? readingPosition
@@ -196,64 +210,88 @@ const BookPanel: React.FC<BookPanelProps> = ({
         </div>
       </CardHeader>
 
-      <div className="flex-1 overflow-y-auto p-3 min-h-0 space-y-2">
+      <div ref={parentRef} className="flex-1 overflow-y-auto p-3 min-h-0">
         {showBookmarks ? (
           bookmarks.length === 0 ? (
             <div className="text-sm text-[#e5eef2]/70 p-3">No bookmarks saved yet.</div>
           ) : (
-            bookmarks.slice().reverse().map((bm) => (
-              <Card
-                key={bm.id}
-                className="border border-white/10 hover:border-neon-500/40 transition-colors cursor-pointer"
-                onClick={() => {
-                  const found = chapters.find((c) => (c.fullTitle === bm.chapter) || (c.title === bm.chapter));
-                  if (found) {
-                    onPositionChange?.({ chapterId: found.id, activeSection: bm.section });
-                    setActiveChapter(found);
-                    onChapterSelect?.(found);
-                  }
-                }}
-              >
-                <CardContent className="p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="px-2 py-1 rounded bg-white/5 border border-white/10 text-xs text-[#e5eef2]/80">
-                        Bookmark
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold text-[#e5eef2] truncate">{bm.title}</div>
-                        <div className="text-xs text-[#e5eef2]/60 truncate">{bm.chapter} • {new Date(bm.timestamp).toLocaleString()}</div>
-                      </div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-[#e5eef2]/50 flex-shrink-0" />
+            <div
+              style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const bm = bookmarks[bookmarks.length - 1 - virtualRow.index];
+                return (
+                  <div
+                    key={bm.id}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)` }}
+                    className="pb-2"
+                  >
+                    <Card
+                      className="border border-white/10 hover:border-neon-500/40 transition-colors cursor-pointer"
+                      onClick={() => {
+                        const found = chapters.find((c) => (c.fullTitle === bm.chapter) || (c.title === bm.chapter));
+                        if (found) {
+                          onPositionChange?.({ chapterId: found.id, activeSection: bm.section });
+                          setActiveChapter(found);
+                          onChapterSelect?.(found);
+                        }
+                      }}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="px-2 py-1 rounded bg-white/5 border border-white/10 text-xs text-[#e5eef2]/80">
+                              Bookmark
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-semibold text-[#e5eef2] truncate">{bm.title}</div>
+                              <div className="text-xs text-[#e5eef2]/60 truncate">{bm.chapter} • {new Date(bm.timestamp).toLocaleString()}</div>
+                            </div>
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-[#e5eef2]/50 flex-shrink-0" />
+                        </div>
+                      </CardContent>
+                    </Card>
                   </div>
-                </CardContent>
-              </Card>
-            ))
+                );
+              })}
+            </div>
           )
         ) : (
-          filteredChapters.map((ch) => (
-            <Card
-              key={ch.id}
-              className="border border-white/10 hover:border-neon-500/40 transition-colors cursor-pointer"
-              onClick={() => {
-                setActiveChapter(ch);
-                if (onChapterSelect) onChapterSelect(ch);
-              }}
-            >
-              <CardContent className="p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="px-2 py-1 rounded bg-white/5 border border-white/10 text-xs text-[#e5eef2]/80">
-                    {ch.number}
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-[#e5eef2]">{ch.fullTitle || ch.title}</div>
-                  </div>
+          <div
+            style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const ch = filteredChapters[virtualRow.index];
+              return (
+                <div
+                  key={ch.id}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualRow.start}px)` }}
+                  className="pb-2"
+                >
+                  <Card
+                    className="border border-white/10 hover:border-neon-500/40 transition-colors cursor-pointer"
+                    onClick={() => {
+                      setActiveChapter(ch);
+                      if (onChapterSelect) onChapterSelect(ch);
+                    }}
+                  >
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="px-2 py-1 rounded bg-white/5 border border-white/10 text-xs text-[#e5eef2]/80">
+                          {ch.number}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-[#e5eef2]">{ch.fullTitle || ch.title}</div>
+                        </div>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-[#e5eef2]/50" />
+                    </CardContent>
+                  </Card>
                 </div>
-                <ArrowRight className="h-4 w-4 text-[#e5eef2]/50" />
-              </CardContent>
-            </Card>
-          ))
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

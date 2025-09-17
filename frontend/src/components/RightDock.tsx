@@ -1,4 +1,4 @@
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { 
@@ -6,13 +6,12 @@ import {
   Settings,
   BarChart3
 } from 'lucide-react';
-// Lazy-load heavy panels to reduce initial and tab-switch work
-const LearningGuide = React.lazy(() => import('@/components/LearningGuide').then(m => ({ default: m.LearningGuide })));
-const BookPanel = React.lazy(() => import('@/components/BookPanel'));
-const ReferencePanel = React.lazy(() => import('@/components/ReferencePanel'));
-const VisualOutputPanel = React.lazy(() => import('@/components/VisualOutputPanel'));
-const SettingsPanel = React.lazy(() => import('@/components/SettingsPanel'));
-import chaptersData from '@/data/chapters.json';
+// Import components directly to debug React dispatcher issue
+import { LearningGuide } from '@/components/LearningGuide';
+import BookPanel from '@/components/BookPanel';
+import { ReferencePanel } from '@/components/ReferencePanel';
+import VisualOutputPanel from '@/components/VisualOutputPanel';
+import SettingsPanel from '@/components/SettingsPanel';
 
 interface Chapter {
   id: string;
@@ -32,7 +31,7 @@ interface RightDockProps {
   onApplyQuery?: (query: string) => void;
   activeView?: string;
   onViewChange?: (view: string) => void;
-  onChapterSelect?: (chapter: Chapter) => void;
+  onChapterSelect?: (chapter: Chapter | null) => void;
   selectedChapter?: Chapter | null;
   visualData?: any;
   isMouseMode?: boolean;
@@ -127,7 +126,6 @@ export const RightDock: React.FC<RightDockProps> = React.memo(({
       </CardHeader>
       <CardContent className="p-0 flex-1 min-h-0">
         <div className="h-full w-full overflow-hidden">
-          <Suspense fallback={<div className="h-full w-full flex items-center justify-center text-[#e5eef2]/60">Loading…</div>}>
             {activeTab === 'guide' && (
               <div className="h-full overflow-hidden flex flex-col">
                 <LearningGuide isExpanded={isExpanded} onToggle={() => setIsExpanded(!isExpanded)} onApplyQuery={onApplyQuery} />
@@ -161,7 +159,6 @@ export const RightDock: React.FC<RightDockProps> = React.memo(({
               <SettingsPanel />
             )}
             {/* Layout content removed */}
-          </Suspense>
         </div>
       </CardContent>
     </Card>

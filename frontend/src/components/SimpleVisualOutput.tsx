@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, Download, Image as ImageIcon, FileJson, FileSpreadsheet, FileText } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Bar } from 'react-chartjs-2';
+import { exportChartPNG, exportCanvasPNG, exportJSON, exportCSV, exportText, maybeExportCSVFromUnknown } from '../lib/export';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -37,7 +38,7 @@ interface SimpleVisualOutputProps {
 }
 
 // Image Canvas Component
-const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
+const ImageCanvas: React.FC<{ data: any; setCanvasEl?: (el: HTMLCanvasElement | null) => void }> = ({ data, setCanvasEl }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Type guards
@@ -114,7 +115,10 @@ const ImageCanvas: React.FC<{ data: any }> = ({ data }) => {
   return (
     <div className="h-full flex justify-center items-center bg-offWhite overflow-hidden p-1">
       <canvas
-        ref={canvasRef}
+        ref={(el) => { 
+          (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = el;
+          setCanvasEl?.(el);
+        }}
         className="max-w-full max-h-full w-full h-full object-contain"
         style={{ imageRendering: 'pixelated' }}
       />
@@ -150,6 +154,7 @@ const ChartView = ({ data }: { data: number[] }) => {
         font: {
           size: 14,
         },
+        color: '#e5eef2'
       },
       tooltip: {
         callbacks: {
@@ -162,15 +167,17 @@ const ChartView = ({ data }: { data: number[] }) => {
       y: {
         beginAtZero: false,
         grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
+          color: 'rgba(255, 255, 255, 0.1)',
         },
+        ticks: { color: '#e5eef2' }
       },
       x: {
         grid: {
-          color: 'rgba(0, 0, 0, 0.1)',
+          color: 'rgba(255, 255, 255, 0.1)',
         },
         ticks: {
           maxTicksLimit: Math.min(20, data.length), // Limit number of x-axis labels
+          color: '#e5eef2'
         },
       },
     },
@@ -349,6 +356,66 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
     return { tableData, columns };
   }, [data]);
 
+  const chartRef = useRef<any>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const handleExportPNG = async () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (currentView === 'chart' && Array.isArray(data)) {
+      // Wait a bit for chart to be fully rendered
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (chartRef.current) {
+        // Ensure chart is ready before export
+        if (chartRef.current.canvas) {
+          await exportChartPNG(chartRef.current, `chart-${ts}.png`);
+        }
+      } else if (chartContainerRef.current) {
+        const canvas = chartContainerRef.current.querySelector('canvas');
+        if (canvas) {
+          await exportCanvasPNG(canvas as HTMLCanvasElement, `chart-${ts}.png`);
+        }
+      }
+    } else if (currentView === 'image') {
+      if (imageCanvasRef.current) {
+        await exportCanvasPNG(imageCanvasRef.current, `image-${ts}.png`);
+      }
+    }
+  };
+
+  const handleExportJSON = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (currentView === 'table' && tableData.length > 0) {
+      exportJSON(data, `table-${ts}.json`);
+    } else if (currentView === 'chart' && Array.isArray(data)) {
+      exportJSON(data, `chart-${ts}.json`);
+    } else if (currentView === 'image' && Array.isArray(data)) {
+      exportJSON(data, `image-data-${ts}.json`);
+    } else if (typeof data === 'string') {
+      exportJSON(data, `text-${ts}.json`);
+    } else {
+      exportJSON(data, `data-${ts}.json`);
+    }
+  };
+
+  const handleExportCSV = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (currentView === 'table' && tableData.length > 0) {
+      if (!maybeExportCSVFromUnknown(data, `table-${ts}.csv`)) {
+        exportCSV(tableData, `table-${ts}.csv`);
+      }
+    } else if (currentView === 'chart' && Array.isArray(data)) {
+      exportCSV({ values: data }, `chart-${ts}.csv`);
+    }
+  };
+
+  const handleExportText = () => {
+    const ts = new Date().toISOString().replace(/[:]/g, '-');
+    if (typeof data === 'string') {
+      exportText(data, `text-${ts}.txt`);
+    }
+  };
   if (!data) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -375,6 +442,29 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
             <div className="flex items-center space-x-2">
               <BarChart3 className="h-5 w-5 text-neon-500" />
               <span className="text-[#e5eef2]">Visual Output</span>
+            </div>
+            <div className="ml-auto">
+              {/* Export buttons */}
+              <div className="flex items-center space-x-1">
+                {(currentView === 'chart' || currentView === 'image') && (
+                  <Button onClick={handleExportPNG} variant="outline" size="sm" title="Export as PNG" disabled={!data}>
+                    <ImageIcon className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button onClick={handleExportJSON} variant="outline" size="sm" title="Export as JSON" disabled={!data}>
+                  <FileJson className="h-4 w-4" />
+                </Button>
+                {(currentView === 'table' || currentView === 'chart') && (
+                  <Button onClick={handleExportCSV} variant="outline" size="sm" title="Export as CSV" disabled={!data}>
+                    <FileSpreadsheet className="h-4 w-4" />
+                  </Button>
+                )}
+                {typeof data === 'string' && (
+                  <Button onClick={handleExportText} variant="outline" size="sm" title="Export as Text" disabled={!data}>
+                    <FileText className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
             {/* Mouse and Live buttons removed - now only available in Visual Output Panel in right dock */}
           </DialogTitle>
@@ -444,7 +534,7 @@ export const SimpleVisualOutput: React.FC<SimpleVisualOutputProps> = ({
           )}
           
           {currentView === 'image' && (isGrayscaleMatrix(data) || isColorMatrix(data)) && (
-            <ImageCanvas data={data} />
+            <ImageCanvas data={data} setCanvasEl={(el) => { imageCanvasRef.current = el; }} />
           )}
 
           {currentView === 'chart' && isNumericArray(data) && (

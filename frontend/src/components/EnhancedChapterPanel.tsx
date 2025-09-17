@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { chapterLoader } from '@/lib/chapterLoader';
 import { BookOpen, FileText, Search, ArrowRight, ChevronLeft, BookmarkPlus, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -92,16 +93,14 @@ export const EnhancedChapterPanel: React.FC<EnhancedChapterPanelProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadGranularChapters = async () => {
-      try {
-        const response = await fetch('/src/data/chapters_granular.json');
-        const data = await response.json();
-        setGranularChapters(data);
-      } catch (error) {
-        console.error('Failed to load granular chapters:', error);
-      }
-    };
-    loadGranularChapters();
+    let mounted = true;
+    chapterLoader.loadGranularChapters().then((data) => {
+      if (!mounted) return;
+      setGranularChapters(data as unknown as GranularChapter[]);
+    }).catch((error) => {
+      console.error('Failed to load granular chapters:', error);
+    });
+    return () => { mounted = false; };
   }, []);
 
   // Guard against oscillation: derive once per chapter change

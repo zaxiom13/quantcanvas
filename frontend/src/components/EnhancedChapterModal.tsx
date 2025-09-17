@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { chapterLoader } from '@/lib/chapterLoader';
 import { X, ChevronDown, ChevronRight, BookOpen, FileText, Search, Filter, ArrowRight, Hash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -101,19 +102,15 @@ export const EnhancedChapterModal: React.FC<EnhancedChapterModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
-    const loadGranularChapters = async () => {
-      try {
-        const response = await fetch('/src/data/chapters_granular.json');
-        const data = await response.json();
-        setGranularChapters(data);
-      } catch (error) {
-        console.error('Failed to load granular chapters:', error);
-      }
-    };
-
-    if (isOpen) {
-      loadGranularChapters();
-    }
+    if (!isOpen) return;
+    let mounted = true;
+    chapterLoader.loadGranularChapters().then((data) => {
+      if (!mounted) return;
+      setGranularChapters(data as unknown as GranularChapter[]);
+    }).catch((error) => {
+      console.error('Failed to load granular chapters:', error);
+    });
+    return () => { mounted = false; };
   }, [isOpen]);
 
   useEffect(() => {
