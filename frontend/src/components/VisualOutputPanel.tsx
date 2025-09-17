@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect } from 'react';
-import { BarChart3, Mouse, Play, Pause, Download, FileJson, FileSpreadsheet, Image as ImageIcon, FileText } from 'lucide-react';
+import { BarChart3, Mouse, Play, Pause } from 'lucide-react';
 import { Button } from './ui/button';
 import { flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { Bar } from 'react-chartjs-2';
@@ -12,7 +12,6 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { exportCSV, exportJSON, exportCanvasPNG, exportChartPNG, exportText, maybeExportCSVFromUnknown } from '@/lib/export';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -26,7 +25,7 @@ interface VisualOutputPanelProps {
   lastQuery?: string;
 }
 
-const ImageCanvas: React.FC<{ data: any; setCanvasEl?: (el: HTMLCanvasElement | null) => void }> = React.memo(({ data, setCanvasEl }) => {
+const ImageCanvas: React.FC<{ data: any }> = React.memo(({ data }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isGrayscaleMatrix = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((row) => Array.isArray(row) && row.every((v) => typeof v === 'number'));
   const isColorMatrix = (arr: any): boolean => Array.isArray(arr) && arr.length > 0 && arr.every((row) => Array.isArray(row) && row.every((pix) => Array.isArray(pix) && (pix.length === 3 || pix.length === 4)));
@@ -80,12 +79,12 @@ const ImageCanvas: React.FC<{ data: any; setCanvasEl?: (el: HTMLCanvasElement | 
   }, [data]);
   return (
     <div className="h-full flex justify-center items-center bg-offWhite overflow-hidden p-1">
-      <canvas ref={(el) => { canvasRef.current = el; setCanvasEl?.(el); }} className="max-w-full max-h-full w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
+      <canvas ref={canvasRef} className="max-w-full max-h-full w-full h-full object-contain" style={{ imageRendering: 'pixelated' }} />
     </div>
   );
 });
 
-const ChartView = React.memo(({ data, chartRef }: { data: number[]; chartRef: React.MutableRefObject<any> }) => {
+const ChartView = React.memo(({ data }: { data: number[] }) => {
   const chartData = {
     labels: data.map((_, index) => index.toString()),
     datasets: [
@@ -104,7 +103,7 @@ const ChartView = React.memo(({ data, chartRef }: { data: number[]; chartRef: Re
   return (
     <div className="h-full p-4 bg-[#0b0f10] rounded-md border border-white/10">
       <div className="h-full">
-        <Bar ref={chartRef as any} data={chartData} options={options} />
+        <Bar data={chartData} options={options} />
       </div>
     </div>
   );
@@ -234,53 +233,6 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
     return { tableData, columns };
   }, [data]);
 
-  const chartRef = useRef<any>(null);
-  const chartContainerRef = useRef<HTMLDivElement | null>(null);
-  const imageCanvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  const handleExport = async () => {
-    const ts = new Date().toISOString().replace(/[:]/g, '-');
-    if (currentView === 'table' && tableData.length > 0) {
-      if (!maybeExportCSVFromUnknown(data, `table-${ts}.csv`)) {
-        exportCSV(tableData, `table-${ts}.csv`);
-      }
-      exportJSON(data, `table-${ts}.json`);
-      return;
-    }
-    if (currentView === 'chart' && Array.isArray(data)) {
-      let didPng = false;
-      if (chartRef.current) {
-        await exportChartPNG(chartRef.current, `chart-${ts}.png`);
-        didPng = true;
-      }
-      if (!didPng && chartContainerRef.current) {
-        const canvas = chartContainerRef.current.querySelector('canvas');
-        if (canvas) {
-          await exportCanvasPNG(canvas as HTMLCanvasElement, `chart-${ts}.png`);
-          didPng = true;
-        }
-      }
-      exportJSON(data, `chart-${ts}.json`);
-      exportCSV({ values: data }, `chart-${ts}.csv`);
-      return;
-    }
-    if (currentView === 'image') {
-      if (imageCanvasRef.current) {
-        await exportCanvasPNG(imageCanvasRef.current, `image-${ts}.png`);
-      }
-      if (Array.isArray(data)) {
-        exportJSON(data, `image-data-${ts}.json`);
-      }
-      return;
-    }
-    // text or other
-    if (typeof data === 'string') {
-      exportText(data, `text-${ts}.txt`);
-    } else {
-      exportJSON(data, `data-${ts}.json`);
-    }
-  };
-
   return (
     <div className="h-full flex flex-col overflow-hidden text-[#e5eef2]">
       <div className="flex items-center justify-between p-3 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent">
@@ -298,20 +250,15 @@ export const VisualOutputPanel: React.FC<VisualOutputPanelProps> = ({
               {isLiveMode ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
           )}
-          <Button onClick={handleExport} variant="outline" size="sm" title="Export" disabled={!data}>
-            <Download className="h-4 w-4" />
-          </Button>
         </div>
       </div>
       <div className="flex-1 overflow-hidden p-3">
         {!data ? (
           <Placeholder />
         ) : currentView === 'image' ? (
-          <ImageCanvas data={data} setCanvasEl={(el) => (imageCanvasRef.current = el)} />
+          <ImageCanvas data={data} />
         ) : currentView === 'chart' ? (
-          <div ref={chartContainerRef} className="h-full">
-            <ChartView data={data as number[]} chartRef={chartRef} />
-          </div>
+          <ChartView data={data as number[]} />
         ) : currentView === 'table' ? (
           <TableView data={tableData} columns={columns} />
         ) : (
